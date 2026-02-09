@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
   ros::NodeHandle nh("");
   ros::NodeHandle pnh("~");
   ros::Rate(50.0);
-
+  
   // Flightmare(Unity3D)
   std::shared_ptr<UnityBridge> unity_bridge_ptr = UnityBridge::getInstance();
   SceneID scene_id{UnityScene::WAREHOUSE};
@@ -88,14 +88,15 @@ int main(int argc, char *argv[]) {
                                         20.0, 20.0, 6.0);
 
   // Start racing
-  ros::Time t0 = ros::Time::now();
-
+  
   unity_bridge_ptr->addStaticObject(gate_1);
   unity_bridge_ptr->addStaticObject(gate_2);
   unity_bridge_ptr->addStaticObject(gate_3);
   unity_bridge_ptr->addQuadrotor(quad_ptr);
   // connect unity
   unity_ready = unity_bridge_ptr->connectUnity(scene_id);
+  
+  ros::Time t0 = ros::Time::now();
 
   FrameID frame_id = 0;
   while (ros::ok() && unity_ready) {
@@ -110,6 +111,13 @@ int main(int argc, char *argv[]) {
     quad_state.x[QS::ATTX] = (Scalar)desired_pose.orientation.x();
     quad_state.x[QS::ATTY] = (Scalar)desired_pose.orientation.y();
     quad_state.x[QS::ATTZ] = (Scalar)desired_pose.orientation.z();
+
+    if (frame_id % 5 == 0) { // Update 10 times a second for smoothness
+    printf("\rPos: [%6.4f %6.4f %6.4f] | Att: [%.4f %.4f %.4f %.4f]",
+           quad_state.x[QS::POSX], quad_state.x[QS::POSY], quad_state.x[QS::POSZ],
+           quad_state.x[QS::ATTW], quad_state.x[QS::ATTX], quad_state.x[QS::ATTY], quad_state.x[QS::ATTZ]);
+    fflush(stdout);
+    }
 
     quad_ptr->setState(quad_state);
 

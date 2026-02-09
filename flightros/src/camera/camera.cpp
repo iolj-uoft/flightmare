@@ -39,15 +39,20 @@ int main(int argc, char *argv[]) {
 
   // Flightmare(Unity3D)
   std::shared_ptr<UnityBridge> unity_bridge_ptr = UnityBridge::getInstance();
-  SceneID scene_id{UnityScene::WAREHOUSE};
+  SceneID scene_id{UnityScene::NATUREFOREST};
   bool unity_ready{false};
 
   // initialize publishers
   image_transport::ImageTransport it(pnh);
-  rgb_pub = it.advertise("/rgb", 1);
-  depth_pub = it.advertise("/depth", 1);
-  segmentation_pub = it.advertise("/segmentation", 1);
-  opticalflow_pub = it.advertise("/opticalflow", 1);
+  // rgb_pub = it.advertise("/rgb", 1);
+  // depth_pub = it.advertise("/depth", 1);
+  // segmentation_pub = it.advertise("/segmentation", 1);
+  // opticalflow_pub = it.advertise("/opticalflow", 1);
+
+  rgb_pub = it.advertise("/hummingbird/camera/rgb", 1);
+  depth_pub = it.advertise("/hummingbird/camera/depth", 1);
+  segmentation_pub = it.advertise("/hummingbird/camera/segmentation", 1);
+  opticalflow_pub = it.advertise("/hummingbird/camera/opticalflow", 1);
 
   // Flightmare
   Vector<3> B_r_BC(0.0, 0.0, 0.3);
@@ -58,7 +63,7 @@ int main(int argc, char *argv[]) {
   rgb_camera->setHeight(360);
   rgb_camera->setRelPose(B_r_BC, R_BC);
   rgb_camera->setPostProcesscing(
-    std::vector<bool>{true, true, true});  // depth, segmentation, optical flow
+    std::vector<bool>{true, false, false});  // depth, segmentation, optical flow
   quad_ptr->addRGBCamera(rgb_camera);
 
   // initialization
@@ -71,15 +76,36 @@ int main(int argc, char *argv[]) {
 
   FrameID frame_id = 0;
   while (ros::ok() && unity_ready) {
-    quad_state.x[QS::POSZ] += 0.1;
+    // 1. Define Circle Parameters
+    double radius = 5.0;      // Radius in meters
+    double omega = 1.0;       // Angular velocity (rad/s)
+    double altitude = 2.0;    // Maintain a constant height of 2 meters
+
+    // 2. Calculate current angle based on frame_id and loop rate (50Hz)
+    // time = frame_id * (1.0 / 50.0)
+    double current_time = frame_id * 0.02; 
+    double angle = omega * current_time;
+
+    // 3. Update States
+    quad_state.x[QS::POSX] = -radius * std::cos(angle) + 60.0;
+    quad_state.x[QS::POSY] = -radius * std::sin(angle) + 50.0;
+    quad_state.x[QS::POSZ] = altitude + 30.0;
+
+    // 4. Optional: Make the drone face the center of the circle
+    // This keeps the camera pointed at the origin (useful for target tracking)
+    double yaw = angle + M_PI; 
+    quad_state.x[QS::ATTW] = std::cos(yaw / 2.0);
+    quad_state.x[QS::ATTZ] = std::sin(yaw / 2.0);
 
     quad_ptr->setState(quad_state);
 
-    unity_bridge_ptr->getRender(frame_id);
-    unity_bridge_ptr->handleOutput();
+    if (frame_id % 5 == 0) { // Only render every 5th step
+      unity_bridge_ptr->getRender(frame_id);
+      unity_bridge_ptr->handleOutput();
+    }
 
     cv::Mat img;
-
+    
     ros::Time timestamp = ros::Time::now();
 
     rgb_camera->getRGBImage(img);
