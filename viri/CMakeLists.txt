@@ -1,6 +1,6 @@
-project(flightros)
-
 cmake_minimum_required(VERSION 3.0.0)
+
+project(viri)
 
 find_package(catkin_simple REQUIRED)
 
@@ -57,8 +57,6 @@ target_link_libraries(flight_pilot_node
 )
 
 # racing
-
-
 catkin_package(
 LIBRARIES
 CATKIN_DEPENDS
@@ -77,7 +75,6 @@ zmqpp
 )
 
 # camera
-
 cs_add_executable(camera
     src/camera/camera.cpp
 )
