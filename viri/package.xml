@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<package format="2">
+  <!-- define package name -->
+  <name>viri</name> 
+
+  <version>0.0.1</version>
+  <description>ROS-Wrapper for flightlib</description>
+
+  <maintainer email="yangchen.lin@mail.utoronto.ca">Yang-Chen Lin</maintainer>
+
+  <license>GNU GPL</license>
+
+  <!-- required system building tools for building the package -->
+  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>catkin_simple</buildtool_depend>
+
+  <!-- Entries: package runtime/build dependencies -->
+  <depend>flightlib</depend>
+  <depend>roscpp</depend>
+  <depend>autopilot</depend>
+  <depend>quadrotor_common</depend>
+  <depend>nav_msgs</depend>
+  <depend>eigen_catkin</depend>
+  <depend>quadrotor_msgs</depend>
+  <depend>polynomial_trajectories</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf</depend>
+  <depend>tf_conversions</depend>
+  <depend>eigen_conversions</depend>
+  <depend>image_transport</depend>
+  <depend>cv_bridge</depend>
+  <depend>mav_msgs</depend>
+
+</package>
