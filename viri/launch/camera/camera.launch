@@ -1,5 +1,5 @@
 <launch>
-    <arg name="debug" default="0" />
+    <arg name="debug" default="false" />
     <arg name="use_unity_editor" default="false" />
 
     <!-- RPG Flightmare Unity Render. -->
@@ -14,7 +14,13 @@
         
     <!-- <node type="rviz" name="rviz" pkg="rviz" args="-d $(find viri)/launch/camera/camera.rviz" /> -->
 
-    <node name="image_view" pkg="image_view" type="image_view" output="screen" args="image:=/rgb _image_transport:=raw">
+    <node name="image_view" pkg="image_view" type="image_view" output="screen" args="image:=/rgb _image_transport:=compressed">
     </node>
 
+    <!-- <node name="depth_view" pkg="image_view" type="image_view" output="screen" args="image:=/depth _image_transport:=compressed">
+    </node> -->
+    
+    <!-- <node pkg="viri" type="camera_recorder" name="camera_recorder" output="screen">
+    </node> -->
+    
 </launch>

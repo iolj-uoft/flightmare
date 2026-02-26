@@ -113,10 +113,10 @@ int main(int argc, char *argv[]) {
     quad_state.x[QS::ATTZ] = (Scalar)desired_pose.orientation.z();
 
     if (frame_id % 5 == 0) { // Update 10 times a second for smoothness
-    printf("\rPos: [%6.4f %6.4f %6.4f] | Att: [%.4f %.4f %.4f %.4f]",
-           quad_state.x[QS::POSX], quad_state.x[QS::POSY], quad_state.x[QS::POSZ],
-           quad_state.x[QS::ATTW], quad_state.x[QS::ATTX], quad_state.x[QS::ATTY], quad_state.x[QS::ATTZ]);
-    fflush(stdout);
+      printf("\rPos: [%6.4f %6.4f %6.4f] | Att: [%.4f %.4f %.4f %.4f]",
+            quad_state.x[QS::POSX], quad_state.x[QS::POSY], quad_state.x[QS::POSZ],
+            quad_state.x[QS::ATTW], quad_state.x[QS::ATTX], quad_state.x[QS::ATTY], quad_state.x[QS::ATTZ]);
+      fflush(stdout);
     }
     
     quad_ptr->setState(quad_state);

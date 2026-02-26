@@ -39,13 +39,13 @@ int main(int argc, char *argv[]) {
 
   // Flightmare(Unity3D)
   std::shared_ptr<UnityBridge> unity_bridge_ptr = UnityBridge::getInstance();
-  SceneID scene_id{UnityScene::NATUREFOREST};
+  SceneID scene_id{UnityScene::GARAGE};
   bool unity_ready{false};
 
   // initialize publishers
   image_transport::ImageTransport it(pnh);
-  // rgb_pub = it.advertise("/rgb", 1);
-  // depth_pub = it.advertise("/depth", 1);
+  rgb_pub = it.advertise("/rgb", 1);
+  depth_pub = it.advertise("/depth", 1);
   // segmentation_pub = it.advertise("/segmentation", 1);
   // opticalflow_pub = it.advertise("/opticalflow", 1);
 
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
   rgb_camera->setHeight(360);
   rgb_camera->setRelPose(B_r_BC, R_BC);
   rgb_camera->setPostProcesscing(
-    std::vector<bool>{true, false, false});  // depth, segmentation, optical flow
+    std::vector<bool>{true, true, true});  // depth, segmentation, optical flow
   quad_ptr->addRGBCamera(rgb_camera);
 
   // initialization

@@ -77,6 +77,9 @@ zmqpp
 # camera
 cs_add_executable(camera
     src/camera/camera.cpp
+    src/camera/SensorPublisher.cpp
+    src/camera/EnvironmentManager.cpp
+    src/camera/TrajectoryGenerator.cpp
 )
 
 target_link_libraries(camera
@@ -87,6 +90,10 @@ zmq
 zmqpp
 )
 
+# camera recorder
+cs_add_executable(camera_recorder 
+    src/camera/camera_recorder.cpp)
+    
 # Finish
 cs_install()
 cs_export()

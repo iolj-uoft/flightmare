@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="quad_name" default="hummingbird"/>
+  <arg name="world_name" default="$(find rotors_gazebo)/worlds/basic.world"/>
+  <arg name="paused" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="use_unity_editor" default="false" />
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_name)" />
+    <arg name="paused" value="$(arg paused)" />
+    <arg name="gui" value="$(arg gui)" />
+  </include>
+
+  <group ns="$(arg quad_name)">
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name" value="$(arg quad_name)" />
+      <arg name="model" value="$(find rotors_description)/urdf/mav_generic_odometry_sensor.gazebo" />
+      <arg name="enable_ground_truth" value="true" />
+      <arg name="x" value="0.0" />
+      <arg name="y" value="0.0" />
+    </include>
+
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface" name="rpg_rotors_interface" output="screen">
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml" />
+      <remap from="odometry" to="ground_truth/odometry" />
+    </node>
+  </group>
+
+  <node name="rpg_flightmare_render" pkg="flightrender" type="RPG_Flightmare.x86_64" unless="$(arg use_unity_editor)">
+  </node>
+
+  <node name="camera_data_generator" pkg="viri" type="camera" output="screen">
+    <param name="quad_name" value="$(arg quad_name)"/>
+    </node>
+
+</launch>
