@@ -94,6 +94,29 @@ zmqpp
 cs_add_executable(camera_recorder 
     src/data_generation/camera_recorder.cpp)
     
+# interceptor
+
+cs_add_library(interceptor
+    src/interceptor/interceptor.cpp
+)
+
+target_link_libraries(interceptor
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+  stdc++fs
+)
+
+cs_add_executable(interceptor_node
+   src/interceptor/interceptor_node.cpp
+)
+
+target_link_libraries(interceptor_node
+  interceptor
+  ${OpenCV_LIBRARIES}
+  stdc++fs
+)
+
+
 # Finish
 cs_install()
 cs_export()

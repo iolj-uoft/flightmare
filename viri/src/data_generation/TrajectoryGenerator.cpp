@@ -1,4 +1,4 @@
-#include "viri/TrajectoryGenerator.hpp"
+#include "flightros/viri/TrajectoryGenerator.hpp"
 
 using namespace flightlib;
 

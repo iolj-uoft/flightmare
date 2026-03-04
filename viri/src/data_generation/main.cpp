@@ -1,7 +1,7 @@
 #include <ros/ros.h>
-#include "viri/EnvironmentManager.hpp"
-#include "viri/TrajectoryGenerator.hpp"
-#include "viri/SensorPublisher.hpp"
+#include "flightros/viri/EnvironmentManager.hpp"
+#include "flightros/viri/TrajectoryGenerator.hpp"
+#include "flightros/viri/SensorPublisher.hpp"
 
 int main(int argc, char* argv[]) {
     // Initialize ROS

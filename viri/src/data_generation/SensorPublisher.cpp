@@ -1,4 +1,4 @@
-#include <viri/SensorPublisher.hpp>
+#include "flightros/viri/SensorPublisher.hpp"
 #include <sensor_msgs/Image.h>
 
 SensorPublisher::SensorPublisher(ros::NodeHandle& nh, std::shared_ptr<flightlib::RGBCamera> camera)
