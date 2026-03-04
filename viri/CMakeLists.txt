@@ -75,14 +75,14 @@ zmqpp
 )
 
 # camera
-cs_add_executable(camera
-    src/camera/camera.cpp
-    src/camera/SensorPublisher.cpp
-    src/camera/EnvironmentManager.cpp
-    src/camera/TrajectoryGenerator.cpp
+cs_add_executable(data_generation
+    src/data_generation/main.cpp
+    src/data_generation/SensorPublisher.cpp
+    src/data_generation/EnvironmentManager.cpp
+    src/data_generation/TrajectoryGenerator.cpp
 )
 
-target_link_libraries(camera
+target_link_libraries(data_generation
 ${catkin_LIBRARIES}
 ${OpenCV_LIBRARIES}
 stdc++fs
@@ -92,7 +92,7 @@ zmqpp
 
 # camera recorder
 cs_add_executable(camera_recorder 
-    src/camera/camera_recorder.cpp)
+    src/data_generation/camera_recorder.cpp)
     
 # Finish
 cs_install()
