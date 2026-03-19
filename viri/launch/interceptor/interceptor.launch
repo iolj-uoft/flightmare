@@ -7,7 +7,7 @@
   <arg name="world_name" default="$(find rotors_gazebo)/worlds/basic.world"/>
 
   <arg name="use_unity_editor" default="false" />
-  <arg name="paused" value="true"/>
+  <arg name="paused" value="false"/>
   <arg name="gui" value="true"/>
   <arg name="use_mpc" default="false"/>
   <arg name="use_ground_truth" default="true"/>
@@ -28,7 +28,7 @@
   
   <!-- Image Viewer -->
   <node name="image_view" pkg="image_view" type="image_view" output="screen"
-      args="image:=/hummingbird/chaser_drone/camera
+      args="image:=/hummingbird/chaser_drone/camera_left
  _image_transport:=compressed" />
     
   <!-- Gazebo stuff to spawn the world !-->
@@ -44,7 +44,7 @@
     <arg name="verbose" value="$(arg verbose)"/>
   </include>
 
-  <!-- RotorS stuff to spawn the quadrotor !-->
+  <!-- RotorS stuff to spawn the chaser drone !-->
   <group ns="$(arg mav_name)">
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
@@ -55,6 +55,40 @@
       <arg name="x" value="$(arg x_init)" />
       <arg name="y" value="$(arg y_init)" />
     </include>
+  </group>
+
+  <!-- Spawning the target drone -->
+  <arg name="target_name" default="target_drone"/>
+  <group ns="$(arg target_name)">
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name" value="hummingbird" /> 
+      <arg name="namespace" value="$(arg target_name)" />
+      <arg name="model" value="$(arg model)" /> 
+      <arg name="enable_logging" value="false" />
+      <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
+      <arg name="log_file" value="$(arg target_name)"/>
+      <arg name="x" value="4.0" /> 
+      <arg name="y" value="0.0" />
+      <arg name="z" value="0.0" />
+    </include>
+
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface" name="rpg_rotors_interface" output="screen" >
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml" />
+      <remap from="odometry" to="ground_truth/odometry" />
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm" />
+    </node>
+
+    <node pkg="autopilot" type="autopilot" name="autopilot" output="screen">
+      <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml" />
+      <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml" />
+      <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml" />
+      <param name="position_controller/use_rate_mode" value="True" />
+      <param name="velocity_estimate_in_world_frame" value="false" />
+      <param name="state_estimate_timeout" value="0.1" />
+      <param name="control_command_delay" value="0.05" />
+      <param name="enable_command_feedthrough" value="$(arg enable_command_feedthrough)" />
+      <remap from="autopilot/state_estimate" to="ground_truth/odometry" />
+    </node>
   </group>
 
   <!-- RPG stuff !-->
@@ -123,5 +157,5 @@
         --quad_name $(arg quad_name)" output="screen"/>
 
   </group>
-
+  <node pkg="viri" type="target_manager.py" name="target_manager" output="screen" />
 </launch>

@@ -31,4 +31,10 @@
   <depend>cv_bridge</depend>
   <depend>mav_msgs</depend>
 
+  <!-- YOLO dependencies -->
+  <!-- <exec_depend>rospy</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>image_transport</exec_depend> -->
 </package>

@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
     }
 
     ROS_INFO("Waiting for Unity buffers to allocate...");
-    ros::Duration(2.0).sleep();
+    // ros::Duration(5.0).sleep();
     
     flightlib::FrameID frame_id = 0;
     const double dt = 0.02;

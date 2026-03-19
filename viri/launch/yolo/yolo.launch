@@ -1,0 +1,9 @@
+<launch>
+  <arg name="model_path" default="$(find viri)/models/yolov8n.pt"/>
+  <node pkg="viri" type="yolo_node.py" name="yolo_node" output="screen">
+    <param name="model_path" value="$(arg model_path)"/>
+    <param name="image_topic" value="/hummingbird/chaser_drone/camera/rgb"/>
+    <param name="out_image_topic" value="/hummingbird/chaser_drone/camera/yolo_annotated"/>
+    <param name="out_json_topic" value="/hummingbird/chaser_drone/camera/yolo_detections"/>
+  </node>
+</launch>

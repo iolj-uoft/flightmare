@@ -30,7 +30,7 @@ EnvironmentManager::EnvironmentManager() {
     rgb_camera_->setWidth(640);
     rgb_camera_->setHeight(360);
     rgb_camera_->setRelPose(B_r_BC, R_BC);
-    rgb_camera_->setPostProcesscing(std::vector<bool>{true, false, false});
+    rgb_camera_->setPostProcesscing(std::vector<bool>{false, false, false});
     chaser_quad_ptr_->addRGBCamera(rgb_camera_);
 
     initializeRingDrones();

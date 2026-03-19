@@ -116,6 +116,11 @@ target_link_libraries(interceptor_node
   stdc++fs
 )
 
+# YOLO
+# catkin_install_python(PROGRAMS
+#     scripts/yolo_node.py
+#     DESTINIATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+#     )
 
 # Finish
 cs_install()

@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <memory>
@@ -37,6 +36,9 @@ class FlightPilot {
   // callbacks
   void mainLoopCallback(const ros::TimerEvent& event);
   void poseCallback(const nav_msgs::Odometry::ConstPtr& msg);
+  
+  // NEW: Target Callback
+  void targetPoseCallback(const nav_msgs::Odometry::ConstPtr& msg);
 
   bool setUnity(const bool render);
   bool connectUnity(void);
@@ -49,19 +51,33 @@ class FlightPilot {
 
   // publisher
   std::unique_ptr<image_transport::ImageTransport> img_it_;
-  image_transport::Publisher rgb_pub_;
-  std::string rgb_topic_ = "chaser_drone/camera";
+  
+  // UPDATED: Stereo Vision Publishers
+  image_transport::Publisher rgb_pub_left_;
+  image_transport::Publisher rgb_pub_right_;
+  std::string rgb_topic_left_ = "chaser_drone/camera_left";
+  std::string rgb_topic_right_ = "chaser_drone/camera_right";
 
   // subscriber
   ros::Subscriber sub_state_est_;
+  
+  // NEW: Target Subscriber
+  ros::Subscriber sub_target_state_est_;
 
   // main loop timer
   ros::Timer timer_main_loop_;
 
   // unity quadrotor
   std::shared_ptr<Quadrotor> quad_ptr_;
-  std::shared_ptr<RGBCamera> rgb_camera_;
   QuadState quad_state_;
+
+  // NEW: Target variables
+  std::shared_ptr<Quadrotor> target_quad_ptr_;
+  QuadState target_quad_state_;
+  
+  // UPDATED: Stereo Cameras
+  std::shared_ptr<RGBCamera> rgb_camera_left_;
+  std::shared_ptr<RGBCamera> rgb_camera_right_;
 
   // Flightmare(Unity3D)
   std::shared_ptr<UnityBridge> unity_bridge_ptr_;

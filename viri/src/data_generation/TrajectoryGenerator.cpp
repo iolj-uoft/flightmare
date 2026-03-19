@@ -4,7 +4,7 @@ using namespace flightlib;
 
 TrajectoryGenerator::TrajectoryGenerator() 
     : target_speed_(0.0), follow_distance_(4.0), chaser_osc_amp_(3.5), 
-      chaser_osc_omega_(0.8), start_x_(50.0), start_y_(50.0), start_z_(50.0), 
+      chaser_osc_omega_(0.8), start_x_(0.0), start_y_(0.0), start_z_(0.0), 
       ring_radius_(1.0), target_yaw_(0.0), target_roll_(0.0), target_pitch_(0.0),
       ring_count_(8) {
 
