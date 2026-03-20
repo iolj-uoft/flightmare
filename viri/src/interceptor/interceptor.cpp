@@ -20,15 +20,16 @@ FlightPilot::FlightPilot(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
     ROS_INFO("[%s] Loaded all parameters.", pnh_.getNamespace().c_str());
   }
 
+  Vector<3> quad_size(0.5, 0.5, 0.5);
   // --- 1. Interceptor Quad Initialization ---
   quad_ptr_ = std::make_shared<Quadrotor>();
+  quad_ptr_->setSize(quad_size);
   quad_state_.setZero();
   quad_ptr_->reset(quad_state_);
 
   // --- 2. Target Quad Initialization ---
   target_quad_ptr_ = std::make_shared<Quadrotor>();
-  Vector<3> target_quad_size(0.5, 0.5, 0.5);
-  target_quad_ptr_->setSize(target_quad_size);
+  target_quad_ptr_->setSize(quad_size);
   target_quad_state_.setZero();
   target_quad_ptr_->reset(target_quad_state_);
 
@@ -38,8 +39,8 @@ FlightPilot::FlightPilot(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
 
   Matrix<3, 3> R_BC = Quaternion(1.0, 0.0, 0.0, 0.0).toRotationMatrix();
 
-  // Left Camera: offset by +0.1m in Y (creating a 20cm stereo baseline)
-  Vector<3> B_r_BC_left(0.0, 0.1, 0.3);
+  // Left Camera: offset by -0.1m in X (creating a 20cm stereo baseline) and +0.1m in Y 
+  Vector<3> B_r_BC_left(-0.1, 0.1, 0.3);
   rgb_camera_left_->setFOV(60);
   rgb_camera_left_->setWidth(640);
   rgb_camera_left_->setHeight(360);
@@ -47,8 +48,8 @@ FlightPilot::FlightPilot(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
   rgb_camera_left_->setPostProcesscing(std::vector<bool>{false, false, false});
   quad_ptr_->addRGBCamera(rgb_camera_left_);
 
-  // Right Camera: offset by -0.1m in Y
-  Vector<3> B_r_BC_right(0.0, -0.1, 0.3);
+  // Right Camera: offset by 0.1m in X (creating a 20cm stereo baseline) and +0.1m in Y 
+  Vector<3> B_r_BC_right(0.1, 0.1, 0.3);
   rgb_camera_right_->setFOV(60);
   rgb_camera_right_->setWidth(640);
   rgb_camera_right_->setHeight(360);
@@ -81,19 +82,19 @@ FlightPilot::~FlightPilot() {}
 void FlightPilot::poseCallback(const nav_msgs::Odometry::ConstPtr &msg) {
   quad_state_.x[QS::POSX] = (Scalar)msg->pose.pose.position.x;
   quad_state_.x[QS::POSY] = (Scalar)msg->pose.pose.position.y;
-  quad_state_.x[QS::POSZ] = (Scalar)msg->pose.pose.position.z;
+  quad_state_.x[QS::POSZ] = (Scalar)msg->pose.pose.position.z + 50.0;
   quad_state_.x[QS::ATTW] = (Scalar)msg->pose.pose.orientation.w;
   quad_state_.x[QS::ATTX] = (Scalar)msg->pose.pose.orientation.x;
   quad_state_.x[QS::ATTY] = (Scalar)msg->pose.pose.orientation.y;
   quad_state_.x[QS::ATTZ] = (Scalar)msg->pose.pose.orientation.z;
-  
+
   quad_ptr_->setState(quad_state_);
 }
 
 void FlightPilot::targetPoseCallback(const nav_msgs::Odometry::ConstPtr &msg) {
   target_quad_state_.x[QS::POSX] = (Scalar)msg->pose.pose.position.x;
   target_quad_state_.x[QS::POSY] = (Scalar)msg->pose.pose.position.y;
-  target_quad_state_.x[QS::POSZ] = (Scalar)msg->pose.pose.position.z;
+  target_quad_state_.x[QS::POSZ] = (Scalar)msg->pose.pose.position.z + 50.0;
   target_quad_state_.x[QS::ATTW] = (Scalar)msg->pose.pose.orientation.w;
   target_quad_state_.x[QS::ATTX] = (Scalar)msg->pose.pose.orientation.x;
   target_quad_state_.x[QS::ATTY] = (Scalar)msg->pose.pose.orientation.y;
