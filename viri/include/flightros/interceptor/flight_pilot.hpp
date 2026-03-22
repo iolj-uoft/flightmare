@@ -55,8 +55,8 @@ class FlightPilot {
   // UPDATED: Stereo Vision Publishers
   image_transport::Publisher rgb_pub_left_;
   image_transport::Publisher rgb_pub_right_;
-  std::string rgb_topic_left_ = "chaser_drone/camera_left";
-  std::string rgb_topic_right_ = "chaser_drone/camera_right";
+  std::string rgb_topic_left_ = "camera_left";
+  std::string rgb_topic_right_ = "camera_right";
 
   // subscriber
   ros::Subscriber sub_state_est_;

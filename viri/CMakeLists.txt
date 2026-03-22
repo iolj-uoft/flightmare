@@ -32,18 +32,18 @@ add_compile_options(-O3)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_ARCH_FLAGS} -Wall -DNDEBUG -fPIC")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -Wall -g")
 
-# --- pilot ---
+# pilot
 cs_add_library(flight_pilot src/pilot/flight_pilot.cpp)
 target_link_libraries(flight_pilot ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs)
 
 cs_add_executable(flight_pilot_node src/pilot/flight_pilot_node.cpp)
 target_link_libraries(flight_pilot_node flight_pilot ${OpenCV_LIBRARIES} stdc++fs)
 
-# --- racing ---
+# racing
 cs_add_executable(racing src/racing/racing.cpp)
 target_link_libraries(racing ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs zmq zmqpp)
 
-# --- camera ---
+# camera
 cs_add_executable(data_generation
     src/data_generation/main.cpp
     src/data_generation/SensorPublisher.cpp
@@ -52,10 +52,10 @@ cs_add_executable(data_generation
 )
 target_link_libraries(data_generation ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs zmq zmqpp)
 
-# --- camera recorder ---
+# camera recorder
 cs_add_executable(camera_recorder src/data_generation/camera_recorder.cpp)
     
-# --- interceptor ---
+# interceptor
 cs_add_library(interceptor src/interceptor/interceptor.cpp)
 target_link_libraries(interceptor ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs)
 
@@ -69,9 +69,11 @@ target_link_libraries(depth_estimation ${catkin_LIBRARIES} stdc++fs)
 cs_add_executable(depth_estimation_node src/depth_estimation/depth_estimation_node.cpp)
 target_link_libraries(depth_estimation_node depth_estimation ${catkin_LIBRARIES} stdc++fs)
 
+# Odom Noise Injection
+cs_add_executable(odom_noise_injector src/odom_noise_injector/odom_noise_injector.cpp)
+target_link_libraries(odom_noise_injector ${catkin_LIBRARIES} stdc++fs)
 
-
-# --- YOLO (Python Script Installation) ---
+# YOLO (Python Script Installation)
 catkin_install_python(PROGRAMS
     scripts/yolo_stereo_node.py
     scripts/target_manager.py

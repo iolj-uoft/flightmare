@@ -62,7 +62,7 @@ Visualization Manager:
       Name: PointStamped
       Queue Size: 10
       Radius: 0.10000000149011612
-      Topic: /hummingbird/target_position_relative
+      Topic: /target_position_relative
       Unreliable: false
       Value: true
     - Class: rviz/Image
@@ -93,7 +93,7 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Default Light: true
-    Fixed Frame: hummingbird/camera_left
+    Fixed Frame: chaser_drone/camera_left
     Frame Rate: 30
   Name: root
   Tools:

@@ -15,7 +15,7 @@ DepthEstimator::DepthEstimator(const ros::NodeHandle& nh, const ros::NodeHandle&
 
     std::string bbox_topic, target_pose_topic;
     pnh_.param("bbox_topic", bbox_topic, std::string("/ultralytics/detection/target_centers"));
-    pnh_.param("target_position_topic", target_pose_topic, std::string("/hummingbird/target_position_relative"));
+    pnh_.param("target_position_topic", target_pose_topic, std::string("/chaser_drone/target_position_relative"));
 
     bbox_sub_ = nh_.subscribe(bbox_topic, 1, &DepthEstimator::bboxCallback, this);
     pose_pub_ = nh_.advertise<geometry_msgs::PointStamped>(target_pose_topic, 1);
@@ -70,7 +70,7 @@ void DepthEstimator::bboxCallback(const std_msgs::Float32MultiArray::ConstPtr& m
     // 4. Publish 3D Point
     geometry_msgs::PointStamped target_point;
     target_point.header.stamp = ros::Time::now();
-    target_point.header.frame_id = "hummingbird/camera_left_optical"; 
+    target_point.header.frame_id = "chaser_drone/camera_left_optical"; 
     
     target_point.point.x = X;
     target_point.point.y = Y;

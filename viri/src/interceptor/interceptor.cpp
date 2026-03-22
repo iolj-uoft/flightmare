@@ -117,7 +117,7 @@ void FlightPilot::mainLoopCallback(const ros::TimerEvent &event) {
     // 2. Publish Left Camera
     if (rgb_camera_left_ && rgb_pub_left_) {
       if (rgb_camera_left_->getRGBImage(img_left)) { 
-        header.frame_id = "hummingbird/camera_left"; 
+        header.frame_id = "/camera_left"; 
         sensor_msgs::ImagePtr msg_left = cv_bridge::CvImage(header, "bgr8", img_left).toImageMsg();
         rgb_pub_left_.publish(msg_left);
       }
@@ -126,7 +126,7 @@ void FlightPilot::mainLoopCallback(const ros::TimerEvent &event) {
     // 3. Publish Right Camera
     if (rgb_camera_right_ && rgb_pub_right_) {
       if (rgb_camera_right_->getRGBImage(img_right)) { 
-        header.frame_id = "hummingbird/camera_right"; 
+        header.frame_id = "/camera_right"; 
         sensor_msgs::ImagePtr msg_right = cv_bridge::CvImage(header, "bgr8", img_right).toImageMsg();
         rgb_pub_right_.publish(msg_right);
       }

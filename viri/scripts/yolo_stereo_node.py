@@ -12,8 +12,8 @@ def main():
 
     # Params
     model_path = rospy.get_param("~model_path", "/home/austin/Desktop/catkin_ws/src/flightmare/viri/model/best.pt")
-    image_left_topic = rospy.get_param("~image_left_topic", "/hummingbird/chaser_drone/camera_left")
-    image_right_topic = rospy.get_param("~image_right_topic", "/hummingbird/chaser_drone/camera_right")
+    image_left_topic = rospy.get_param("~image_left_topic", "/chaser_drone/camera_left")
+    image_right_topic = rospy.get_param("~image_right_topic", "/chaser_drone/camera_right")
     out_image_left_topic = rospy.get_param("~out_image_left_topic", "/ultralytics/detection/image_left_annotated")
     # NEW: right annotated image topic
     out_image_right_topic = rospy.get_param("~out_image_right_topic", "/ultralytics/detection/image_right_annotated")
