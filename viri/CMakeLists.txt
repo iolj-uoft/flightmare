@@ -4,6 +4,7 @@ project(viri)
 
 find_package(catkin_simple REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 catkin_simple()
 
@@ -31,6 +32,8 @@ add_compile_options(-O3)
 # Setup Release and Debug flags
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_ARCH_FLAGS} -Wall -DNDEBUG -fPIC")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -Wall -g")
+
+include_directories(${EIGEN3_INCLUDE_DIRS})
 
 # pilot
 cs_add_library(flight_pilot src/pilot/flight_pilot.cpp)
@@ -61,6 +64,10 @@ target_link_libraries(interceptor ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++
 
 cs_add_executable(interceptor_node src/interceptor/interceptor_node.cpp)
 target_link_libraries(interceptor_node interceptor ${OpenCV_LIBRARIES} stdc++fs)
+
+# Relative ESKF Estimation Node
+cs_add_executable(eskf_estimation_node src/interceptor/relative_eskf_node.cpp)
+target_link_libraries(eskf_estimation_node ${catkin_LIBRARIES} stdc++fs)
 
 # Depth Estimation
 cs_add_library(depth_estimation src/depth_estimation/depth_estimation.cpp)

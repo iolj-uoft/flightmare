@@ -63,7 +63,7 @@ FlightPilot::FlightPilot(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
   rgb_pub_right_ = img_it_->advertise(rgb_topic_right_, 1);
   ROS_INFO_STREAM("Publishing stereo images on: " << rgb_topic_left_ << " and " << rgb_topic_right_);
 
-  sub_state_est_ = nh_.subscribe("flight_pilot/state_estimate", 1, &FlightPilot::poseCallback, this);
+  sub_state_est_ = nh_.subscribe("/chaser_drone/ground_truth/odometry", 1, &FlightPilot::poseCallback, this);
   sub_target_state_est_ = nh_.subscribe("/target_drone/ground_truth/odometry", 1, &FlightPilot::targetPoseCallback, this);
 
   // Main loop timer

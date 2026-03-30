@@ -8,15 +8,23 @@ from nav_msgs.msg import Odometry
 class TargetManager:
     def __init__(self):
         rospy.init_node('target_manager', anonymous=True)
-        
-        # Publishers for the target drone's autopilot
-        self.arm_pub = rospy.Publisher('/target_drone/bridge/arm', Bool, queue_size=1)
-        self.start_pub = rospy.Publisher('/target_drone/autopilot/start', Empty, queue_size=1)
+
+        # target namespace (set in launch or via rosparam)
+        self.target_name = rospy.get_param("~target_name", "target_drone").strip('/')
+        ns = '/' + self.target_name
+        # Publishers for the target drone's autopilot (namespaced)
+        self.arm_pub = rospy.Publisher(ns + '/bridge/arm', Bool, queue_size=1)
+        self.start_pub = rospy.Publisher(ns + '/autopilot/start', Empty, queue_size=1)
         # Publish velocity commands for smooth control
-        self.vel_pub = rospy.Publisher('/target_drone/autopilot/velocity_command', TwistStamped, queue_size=1)
-        
+        self.vel_pub = rospy.Publisher(ns + '/autopilot/velocity_command', TwistStamped, queue_size=1)
+         
         self.has_odometry = False
-        rospy.Subscriber('/target_drone/ground_truth/odometry', Odometry, self.odom_callback)
+        rospy.Subscriber(ns + '/ground_truth/odometry', Odometry, self.odom_callback)
+
+        rospy.loginfo("TargetManager will publish to namespace: %s", ns)
+        rospy.loginfo("  arm -> %s/bridge/arm", ns)
+        rospy.loginfo("  start -> %s/autopilot/start", ns)
+        rospy.loginfo("  vel  -> %s/autopilot/velocity_command", ns)
 
         # Trajectory switching via ROS param (polled each loop). Default can be overridden at runtime:
         # rosparam set /target_manager/active_trajectory "figure_eight"
