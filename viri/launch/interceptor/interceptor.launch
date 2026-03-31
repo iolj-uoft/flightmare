@@ -59,11 +59,15 @@
     <node pkg="autopilot" type="autopilot" name="autopilot" output="screen">
       <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml" />
       <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml" />
+      <param name="kpxy" value="10.0" />
+      <param name="kdxy" value="8.0" />
+      <param name="kpz" value="12.0" />
+      
       <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml" />
       <param name="position_controller/use_rate_mode" value="True" />
       <param name="velocity_estimate_in_world_frame" value="false" />
       <param name="state_estimate_timeout" value="0.1" />
-      <param name="control_command_delay" value="0.05" />
+      <param name="control_command_delay" value="0.01" />
       <param name="enable_command_feedthrough" value="$(arg enable_command_feedthrough)" />
       <remap from="autopilot/state_estimate" to="ground_truth/odometry" />
     </node>
@@ -112,6 +116,10 @@
     <node pkg="autopilot" type="autopilot" name="autopilot" output="screen" unless="$(arg use_mpc)">
       <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml" />
       <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml" />
+      <param name="kpxy" value="10.0" />
+      <param name="kdxy" value="8.0" />
+      <param name="kpz" value="12.0" />
+
       <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml" />
       <param name="position_controller/use_rate_mode" value="True" />
       <param name="velocity_estimate_in_world_frame" value="false" />
@@ -137,8 +145,12 @@
     <node pkg="joy" type="joy_node" name="joy_node">
       <param name="autorepeat_rate" value="10"/>
     </node>
+
     <node pkg="manual_flight_assistant" type="manual_flight_assistant" name="manual_flight_assistant" output="screen">
       <rosparam file="$(find rpg_rotors_interface)/parameters/manual_flight_assistant.yaml"/>
+      <param name="vmax_xy" value="3.0" />
+      <param name="vmax_z" value="1.0" />
+      <param name="rmax_yaw" value="2.0" />
     </node>
     <node name="rqt_quad_gui" pkg="rqt_gui" type="rqt_gui" args="-s rqt_quad_gui.basic_flight.BasicFlight --args --quad_name $(arg quad_name)" output="screen"/>
   </group>
