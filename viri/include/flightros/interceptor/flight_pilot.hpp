@@ -1,6 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
+#include <cmath>
 
 // ros
 #include <nav_msgs/Odometry.h>

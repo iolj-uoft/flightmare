@@ -81,7 +81,6 @@ def main():
         out_msg_left.header = msg_left.header # Maintain the original timestamp
         img_pub_left.publish(out_msg_left)
 
-        # NEW: annotate and publish right image
         annotated_right = res_right.plot()
         if annotated_right is None:
             annotated_right = rgb_right

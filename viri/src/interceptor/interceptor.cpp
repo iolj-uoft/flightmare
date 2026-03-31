@@ -21,17 +21,17 @@ FlightPilot::FlightPilot(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
   }
 
   Vector<3> quad_size(0.5, 0.5, 0.5);
-  // --- 1. Interceptor Quad Initialization ---
-  quad_ptr_ = std::make_shared<Quadrotor>();
-  quad_ptr_->setSize(quad_size);
-  quad_state_.setZero();
-  quad_ptr_->reset(quad_state_);
-
-  // --- 2. Target Quad Initialization ---
+  // --- 1. Target Quad Initialization ---
   target_quad_ptr_ = std::make_shared<Quadrotor>();
   target_quad_ptr_->setSize(quad_size);
   target_quad_state_.setZero();
   target_quad_ptr_->reset(target_quad_state_);
+
+  // --- 2. Interceptor Quad Initialization ---
+  quad_ptr_ = std::make_shared<Quadrotor>();
+  quad_ptr_->setSize(quad_size);
+  quad_state_.setZero();
+  quad_ptr_->reset(quad_state_);
 
   // --- 3. Stereo Camera Setup ---
   rgb_camera_left_ = std::make_shared<RGBCamera>();
@@ -80,25 +80,54 @@ FlightPilot::FlightPilot(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
 FlightPilot::~FlightPilot() {}
 
 void FlightPilot::poseCallback(const nav_msgs::Odometry::ConstPtr &msg) {
+  // 1. Pass the position directly from Gazebo WITHOUT any rotation
   quad_state_.x[QS::POSX] = (Scalar)msg->pose.pose.position.x;
   quad_state_.x[QS::POSY] = (Scalar)msg->pose.pose.position.y;
-  quad_state_.x[QS::POSZ] = (Scalar)msg->pose.pose.position.z + 50.0;
-  quad_state_.x[QS::ATTW] = (Scalar)msg->pose.pose.orientation.w;
-  quad_state_.x[QS::ATTX] = (Scalar)msg->pose.pose.orientation.x;
-  quad_state_.x[QS::ATTY] = (Scalar)msg->pose.pose.orientation.y;
-  quad_state_.x[QS::ATTZ] = (Scalar)msg->pose.pose.orientation.z;
+  quad_state_.x[QS::POSZ] = (Scalar)msg->pose.pose.position.z + 50.0; 
+
+  // 2. Extract raw orientation
+  Eigen::Quaterniond q_gazebo(msg->pose.pose.orientation.w, 
+                              msg->pose.pose.orientation.x, 
+                              msg->pose.pose.orientation.y, 
+                              msg->pose.pose.orientation.z);
+
+  // 3. Define the -90 degree (CW) visual offset
+  Eigen::Quaterniond q_yaw_offset(Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitZ()));
+
+  // 4. Multiply with the offset on the RIGHT (Local Rotation)
+  // This spins the 3D model in place without changing the global coordinate frame
+  Eigen::Quaterniond q_rendered = q_gazebo * q_yaw_offset;
+
+  quad_state_.x[QS::ATTW] = (Scalar)q_rendered.w();
+  quad_state_.x[QS::ATTX] = (Scalar)q_rendered.x();
+  quad_state_.x[QS::ATTY] = (Scalar)q_rendered.y();
+  quad_state_.x[QS::ATTZ] = (Scalar)q_rendered.z();
 
   quad_ptr_->setState(quad_state_);
 }
 
 void FlightPilot::targetPoseCallback(const nav_msgs::Odometry::ConstPtr &msg) {
+  // 1. Pass the position directly from Gazebo WITHOUT any rotation
   target_quad_state_.x[QS::POSX] = (Scalar)msg->pose.pose.position.x;
   target_quad_state_.x[QS::POSY] = (Scalar)msg->pose.pose.position.y;
   target_quad_state_.x[QS::POSZ] = (Scalar)msg->pose.pose.position.z + 50.0;
-  target_quad_state_.x[QS::ATTW] = (Scalar)msg->pose.pose.orientation.w;
-  target_quad_state_.x[QS::ATTX] = (Scalar)msg->pose.pose.orientation.x;
-  target_quad_state_.x[QS::ATTY] = (Scalar)msg->pose.pose.orientation.y;
-  target_quad_state_.x[QS::ATTZ] = (Scalar)msg->pose.pose.orientation.z;
+
+  // 2. Extract raw orientation
+  Eigen::Quaterniond q_gazebo(msg->pose.pose.orientation.w, 
+                              msg->pose.pose.orientation.x, 
+                              msg->pose.pose.orientation.y, 
+                              msg->pose.pose.orientation.z);
+
+  // 3. Define the -90 degree (CW) visual offset
+  Eigen::Quaterniond q_yaw_offset(Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitZ()));
+
+  // 4. Multiply with the offset on the RIGHT (Local Rotation)
+  Eigen::Quaterniond q_rendered = q_gazebo * q_yaw_offset;
+
+  target_quad_state_.x[QS::ATTW] = (Scalar)q_rendered.w();
+  target_quad_state_.x[QS::ATTX] = (Scalar)q_rendered.x();
+  target_quad_state_.x[QS::ATTY] = (Scalar)q_rendered.y();
+  target_quad_state_.x[QS::ATTZ] = (Scalar)q_rendered.z();
   
   target_quad_ptr_->setState(target_quad_state_);
 }
@@ -140,8 +169,8 @@ bool FlightPilot::setUnity(const bool render) {
     unity_bridge_ptr_ = UnityBridge::getInstance();
     
     // Add BOTH drones to the renderer
-    unity_bridge_ptr_->addQuadrotor(quad_ptr_);
     unity_bridge_ptr_->addQuadrotor(target_quad_ptr_);
+    unity_bridge_ptr_->addQuadrotor(quad_ptr_);
     
     ROS_INFO("[%s] Unity Bridge is created.", pnh_.getNamespace().c_str());
   }

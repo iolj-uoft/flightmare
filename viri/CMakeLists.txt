@@ -65,9 +65,9 @@ target_link_libraries(interceptor ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++
 cs_add_executable(interceptor_node src/interceptor/interceptor_node.cpp)
 target_link_libraries(interceptor_node interceptor ${OpenCV_LIBRARIES} stdc++fs)
 
-# Relative ESKF Estimation Node
-cs_add_executable(eskf_estimation_node src/interceptor/relative_eskf_node.cpp)
-target_link_libraries(eskf_estimation_node ${catkin_LIBRARIES} stdc++fs)
+# Relative EKF Estimation Node
+cs_add_executable(ekf_estimation_node src/interceptor/relative_eskf_node.cpp)
+target_link_libraries(ekf_estimation_node ${catkin_LIBRARIES} stdc++fs)
 
 # Depth Estimation
 cs_add_library(depth_estimation src/depth_estimation/depth_estimation.cpp)
