@@ -1,5 +1,5 @@
 #include <ros/ros.h>
-#include "flightros/interceptor/flight_pilot.hpp"
+#include "flightros/interceptor/interceptor.hpp"
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "flight_pilot");

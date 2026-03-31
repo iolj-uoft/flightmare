@@ -1,4 +1,4 @@
-#include "flightros/interceptor/flight_pilot.hpp"
+#include "flightros/interceptor/interceptor.hpp"
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/Image.h>
 
@@ -37,10 +37,10 @@ FlightPilot::FlightPilot(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
   rgb_camera_left_ = std::make_shared<RGBCamera>();
   rgb_camera_right_ = std::make_shared<RGBCamera>();
 
-  Matrix<3, 3> R_BC = Quaternion(1.0, 0.0, 0.0, 0.0).toRotationMatrix();
+  Matrix<3, 3> R_BC = Eigen::AngleAxisf(M_PI / 4.0, Eigen::Vector3f::UnitZ()).toRotationMatrix();
 
   // Left Camera: offset by -0.1m in X (creating a 20cm stereo baseline) and +0.1m in Y 
-  Vector<3> B_r_BC_left(-0.1, 0.1, 0.3);
+  Vector<3> B_r_BC_left(-0.1414, 0.0, 0.3);
   rgb_camera_left_->setFOV(60);
   rgb_camera_left_->setWidth(640);
   rgb_camera_left_->setHeight(360);
@@ -49,7 +49,7 @@ FlightPilot::FlightPilot(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
   quad_ptr_->addRGBCamera(rgb_camera_left_);
 
   // Right Camera: offset by 0.1m in X (creating a 20cm stereo baseline) and +0.1m in Y 
-  Vector<3> B_r_BC_right(0.1, 0.1, 0.3);
+  Vector<3> B_r_BC_right(0.0, 0.1414, 0.3);
   rgb_camera_right_->setFOV(60);
   rgb_camera_right_->setWidth(640);
   rgb_camera_right_->setHeight(360);
@@ -92,7 +92,7 @@ void FlightPilot::poseCallback(const nav_msgs::Odometry::ConstPtr &msg) {
                               msg->pose.pose.orientation.z);
 
   // 3. Define the -90 degree (CW) visual offset
-  Eigen::Quaterniond q_yaw_offset(Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitZ()));
+  Eigen::Quaterniond q_yaw_offset(Eigen::AngleAxisd(-M_PI / 2.0 - M_PI / 4.0, Eigen::Vector3d::UnitZ()));
 
   // 4. Multiply with the offset on the RIGHT (Local Rotation)
   // This spins the 3D model in place without changing the global coordinate frame
@@ -119,7 +119,7 @@ void FlightPilot::targetPoseCallback(const nav_msgs::Odometry::ConstPtr &msg) {
                               msg->pose.pose.orientation.z);
 
   // 3. Define the -90 degree (CW) visual offset
-  Eigen::Quaterniond q_yaw_offset(Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitZ()));
+  Eigen::Quaterniond q_yaw_offset(Eigen::AngleAxisd(-M_PI / 2.0 - M_PI / 4.0, Eigen::Vector3d::UnitZ()));
 
   // 4. Multiply with the offset on the RIGHT (Local Rotation)
   Eigen::Quaterniond q_rendered = q_gazebo * q_yaw_offset;
