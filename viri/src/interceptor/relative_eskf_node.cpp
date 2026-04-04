@@ -11,6 +11,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/exceptions.h>
 #include <memory>
+#include <deque>
 
 class RelativeEKF {
 private:
@@ -37,6 +38,18 @@ private:
     tf2_ros::Buffer tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     tf2_ros::TransformBroadcaster tf_broadcaster_;
+
+    struct HistoryElement {
+        ros::Time stamp;
+        Eigen::VectorXd x;
+        Eigen::MatrixXd P;
+        Eigen::Vector3d v_ga; // Linear velocity input
+        Eigen::Vector3d w_ga; // Angular velocity input
+        double dt;            // Time step used to arrive at this state
+    };
+
+    std::deque<HistoryElement> history_buffer_;
+    const size_t MAX_HISTORY_SIZE = 100; // Stores up to 1 second of data at 100 Hz
     
 public:
     RelativeEKF(ros::NodeHandle& nh) : nh_(nh), is_initialized_(false), tf_buffer_(ros::Duration(10.0)) {
@@ -101,6 +114,39 @@ public:
         return q_body_to_ga.toRotationMatrix();
     }
 
+    Eigen::Matrix3d computeDynamicCovariance(const Eigen::Vector3d& z_body) {
+        // Calculate Euclidean distance to the target
+        double distance = z_body.norm();
+        
+        // Clamp the minimum distance to avoid absolute zero uncertainty 
+        // and prevent the covariance matrix from becoming singular
+        distance = std::max(distance, 0.5); 
+
+        // Define scaling coefficients (Tune these based on your specific YOLO/Stereo accuracy)
+        // e.g., depth_coeff = 0.05 means a 5cm standard deviation at 1 meter.
+        double depth_coeff = 0.05; 
+        double lat_coeff = 0.02;   
+
+        // Stereo vision physics:
+        // - Depth standard deviation scales quadratically (distance^2)
+        // - Lateral/Vertical standard deviation scales linearly (distance)
+        double std_dev_depth = depth_coeff * (distance * distance); 
+        double std_dev_lat   = lat_coeff * distance;                
+
+        Eigen::Matrix3d R_dynamic = Eigen::Matrix3d::Zero();
+        
+        // Variances are the square of the standard deviations
+        // Assuming standard ROS REP-103: X is Forward (Depth), Y is Left, Z is Up
+        R_dynamic(0, 0) = std_dev_depth * std_dev_depth; // X (Forward/Depth)
+        R_dynamic(1, 1) = std_dev_lat * std_dev_lat;     // Y (Lateral)
+        R_dynamic(2, 2) = std_dev_lat * std_dev_lat;     // Z (Vertical)
+        
+        // Apply a noise floor (minimum constant variance) to maintain stability
+        Eigen::Matrix3d R_floor = Eigen::Matrix3d::Identity() * 0.01;
+        
+        return R_dynamic + R_floor;
+    }
+
     Eigen::VectorXd computeDynamics(const Eigen::VectorXd& state, 
                                     const Eigen::Vector3d& v_drone, 
                                     const Eigen::Vector3d& w_drone) {
@@ -112,6 +158,28 @@ public:
         state_dot.tail(3) = -w_drone.cross(v_tgt);
         
         return state_dot;
+    }
+
+    void propagateState(Eigen::VectorXd& x, Eigen::MatrixXd& P, 
+                        const Eigen::Vector3d& v_ga, const Eigen::Vector3d& w_ga, double dt) {
+        // 1. RK4 Integration (using your existing computeDynamics)
+        Eigen::VectorXd k1 = computeDynamics(x, v_ga, w_ga);
+        Eigen::VectorXd k2 = computeDynamics(x + 0.5 * dt * k1, v_ga, w_ga);
+        Eigen::VectorXd k3 = computeDynamics(x + 0.5 * dt * k2, v_ga, w_ga);
+        Eigen::VectorXd k4 = computeDynamics(x + dt * k3, v_ga, w_ga);
+
+        x += (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+
+        // 2. Covariance Update
+        Eigen::MatrixXd F = Eigen::MatrixXd::Zero(6, 6);
+        Eigen::Matrix3d w_skew = skew(w_ga);
+        F.block<3, 3>(0, 0) = -w_skew;
+        F.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity();
+        F.block<3, 3>(3, 3) = -w_skew;
+
+        Eigen::MatrixXd I = Eigen::MatrixXd::Identity(6, 6);
+        Eigen::MatrixXd Phi = I + F * dt + 0.5 * F * F * dt * dt;
+        P = Phi * P * Phi.transpose() + Q_ * dt;
     }
 
     void predictionCallback(const nav_msgs::Odometry::ConstPtr& msg) {
@@ -152,31 +220,32 @@ public:
         // GA Frame only rotates around Z
         Eigen::Vector3d w_ga(0.0, 0.0, yaw_rate); 
 
-        // 4. RK4 Integration (using GA vectors!)
-        Eigen::VectorXd k1 = computeDynamics(x_, v_ga, w_ga);
-        Eigen::VectorXd k2 = computeDynamics(x_ + 0.5 * dt * k1, v_ga, w_ga);
-        Eigen::VectorXd k3 = computeDynamics(x_ + 0.5 * dt * k2, v_ga, w_ga);
-        Eigen::VectorXd k4 = computeDynamics(x_ + dt * k3, v_ga, w_ga);
+        // 1. Propagate the current state forward
+        propagateState(x_, P_, v_ga, w_ga, dt);
 
-        x_ += (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+        // 2. Save to history buffer
+        HistoryElement hist;
+        hist.stamp = current_time;
+        hist.x = x_;
+        hist.P = P_;
+        hist.v_ga = v_ga;
+        hist.w_ga = w_ga;
+        hist.dt = dt;
 
-        // 5. Covariance Update
-        Eigen::MatrixXd F = Eigen::MatrixXd::Zero(6, 6);
-        Eigen::Matrix3d w_skew = skew(w_ga);
-        F.block<3, 3>(0, 0) = -w_skew;
-        F.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity();
-        F.block<3, 3>(3, 3) = -w_skew;
-
-        Eigen::MatrixXd I = Eigen::MatrixXd::Identity(6, 6);
-        Eigen::MatrixXd Phi = I + F * dt + 0.5 * F * F * dt * dt;
-        P_ = Phi * P_ * Phi.transpose() + Q_ * dt;
+        history_buffer_.push_back(hist);
+        if (history_buffer_.size() > MAX_HISTORY_SIZE) {
+            history_buffer_.pop_front();
+        }
 
         last_odom_time_ = current_time;
         publishState(current_time, msg);
     }
 
     void updateCallback(const geometry_msgs::PointStamped::ConstPtr& msg) {
+        ros::Time yolo_time = msg->header.stamp;
+        
         // 1. Transform to pure body frame
+        // (tf_buffer_ automatically uses yolo_time to get the historical transform)
         geometry_msgs::PointStamped pt_body;
         try {
             tf_buffer_.transform(*msg, pt_body, "chaser_drone/base_link", ros::Duration(0.1));
@@ -187,11 +256,15 @@ public:
 
         Eigen::Vector3d z_body(pt_body.point.x, pt_body.point.y, pt_body.point.z);
 
-        // 2. CRITICAL CHANGE: Derotate measurement into GA Frame BEFORE the EKF sees it
+        Eigen::Matrix3d R_dynamic_cov = computeDynamicCovariance(z_body);
+
+        // 2. Derotate measurement into GA Frame BEFORE the EKF sees it
+        // (Uses the latest orientation. For a 50ms delay, this approximation is usually fine)
         Eigen::Matrix3d R_derotate = getDerotationMatrix(latest_q_);
-        Eigen::Matrix3d R_noise_ga = R_derotate * R_ * R_derotate.transpose();
+        Eigen::Matrix3d R_noise_ga = R_derotate * R_dynamic_cov * R_derotate.transpose();
         Eigen::Vector3d z_ga = R_derotate * z_body;
 
+        // --- Initialization Block ---
         if (!is_initialized_) {
             x_(0) = z_ga(0); x_(1) = z_ga(1); x_(2) = z_ga(2);
             last_odom_time_ = pt_body.header.stamp;
@@ -200,17 +273,63 @@ public:
             return;
         }
 
-        // 3. EKF Update (Comparing GA observation to GA prediction)
+        if (history_buffer_.empty()) return;
+
+        // 3. REWIND: Find the state in history closest to yolo_time
+        auto it = history_buffer_.begin();
+        
+        // Find the first element that is AT or just AFTER the yolo_time
+        while (it != history_buffer_.end() && it->stamp < yolo_time) {
+            ++it;
+        }
+
+        // If we didn't find a valid time (e.g., measurement is too old), abort update
+        if (it == history_buffer_.end() || it == history_buffer_.begin()) {
+            ROS_WARN_THROTTLE(1.0, "YOLO measurement too old or out of buffer range.");
+            return; 
+        }
+
+        // Step back one to get the state just BEFORE the measurement
+        --it; 
+
+        Eigen::VectorXd x_delayed = it->x;
+        Eigen::MatrixXd P_delayed = it->P;
+
+        // 4. EKF UPDATE (Comparing past GA observation to past GA prediction)
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, 6);
         H.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
 
-        Eigen::Vector3d y = z_ga - H * x_;
-        Eigen::MatrixXd S = H * P_ * H.transpose() + R_noise_ga;
-        Eigen::MatrixXd K = P_ * H.transpose() * S.inverse();
-        x_ = x_ + K * y;
+        Eigen::Vector3d y = z_ga - H * x_delayed;
+        Eigen::MatrixXd S = H * P_delayed * H.transpose() + R_noise_ga;
+        Eigen::MatrixXd K = P_delayed * H.transpose() * S.inverse();
         
+        x_delayed = x_delayed + K * y;
         Eigen::MatrixXd I = Eigen::MatrixXd::Identity(6, 6);
-        P_ = (I - K * H) * P_;
+        P_delayed = (I - K * H) * P_delayed;
+
+        // Save the updated state back to that exact point in history
+        it->x = x_delayed;
+        it->P = P_delayed;
+
+        // 5. REPLAY: Fast-forward the state back to the present
+        auto replay_it = it;
+        auto next_it = it + 1;
+        
+        while (next_it != history_buffer_.end()) {
+            // Re-propagate using the old inputs, starting from the newly corrected state
+            propagateState(replay_it->x, replay_it->P, next_it->v_ga, next_it->w_ga, next_it->dt);
+            
+            // Overwrite the next state in the buffer with the newly re-integrated state
+            next_it->x = replay_it->x;
+            next_it->P = replay_it->P;
+            
+            replay_it++;
+            next_it++;
+        }
+
+        // 6. FINALIZE: Update the current active state to the end of the replayed buffer
+        x_ = history_buffer_.back().x;
+        P_ = history_buffer_.back().P;
     }
 
     void publishState(ros::Time stamp, const nav_msgs::Odometry::ConstPtr& drone_odom) {
