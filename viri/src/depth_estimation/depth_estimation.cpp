@@ -38,7 +38,7 @@ void DepthEstimator::bboxCallback(const std_msgs::Float32MultiArray::ConstPtr& m
     // Edge Rejection Filter
     // If the center is within 40 pixels of the left or right edge, the box is 
     // likely clipping. Reject the measurement so the EKF can coast.
-    double edge_margin = 40.0; 
+    double edge_margin = 50.0; 
     double image_width = 640.0; // Your camera width
     
     if (x_l < edge_margin || x_l > (image_width - edge_margin) || 
