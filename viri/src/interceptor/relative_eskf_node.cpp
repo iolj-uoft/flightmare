@@ -218,10 +218,10 @@ public:
         // Publish pure body point for visualization (RViz)
         geometry_msgs::PointStamped point_msg;
         point_msg.header.stamp = stamp;
-        point_msg.header.frame_id = "chaser_drone/base_link"; 
-        point_msg.point.x = x_(0);
-        point_msg.point.y = x_(1);
-        point_msg.point.z = x_(2);
+        point_msg.header.frame_id = "ga_body_frame";
+        point_msg.point.x = p_rel_ga(0);
+        point_msg.point.y = p_rel_ga(1);
+        point_msg.point.z = p_rel_ga(2);
         
         filtered_point_pub_.publish(point_msg);
     }
