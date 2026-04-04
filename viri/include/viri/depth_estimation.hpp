@@ -1,9 +1,10 @@
 #pragma once
 
 #include <ros/ros.h>
+#include <string>
 #include <std_msgs/Float32MultiArray.h>
 #include <geometry_msgs/PointStamped.h>
-#include <string>
+#include <vision_msgs/Detection2DArray.h>
 
 namespace viri {
 
@@ -14,7 +15,7 @@ public:
 
 private:
     // Callback for the synchronized YOLO bounding boxes
-    void bboxCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
+    void bboxCallback(const vision_msgs::Detection2DArray::ConstPtr& msg);
 
     ros::NodeHandle nh_;
     ros::NodeHandle pnh_;

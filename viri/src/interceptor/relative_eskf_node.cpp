@@ -21,13 +21,17 @@ private:
     ros::Publisher filtered_point_pub_;
 
     // --- The Core Math Variables ---
-    Eigen::VectorXd x_; // State: [px_rel, py_rel, pz_rel, vx_tgt, vy_tgt, vz_tgt]^T
+    // State now strictly lives in the Gravity-Aligned (GA) Frame
+    Eigen::VectorXd x_; // State: [px_ga, py_ga, pz_ga, vx_tgt_ga, vy_tgt_ga, vz_tgt_ga]^T
     Eigen::MatrixXd P_; // Covariance Matrix (6x6)
     Eigen::MatrixXd Q_; // Process Noise (6x6)
     Eigen::MatrixXd R_; // Measurement Noise (3x3)
 
     ros::Time last_odom_time_;
     bool is_initialized_;
+    
+    // Store the latest orientation to sync Odometry and YOLO callbacks
+    geometry_msgs::Quaternion latest_q_;
 
     // TF2 buffer, listener, and broadcaster
     tf2_ros::Buffer tf_buffer_;
@@ -49,6 +53,9 @@ public:
         
         R_ = Eigen::MatrixXd::Identity(3, 3) * 0.2;
 
+        // Initialize latest_q_ to identity quaternion
+        latest_q_.x = 0.0; latest_q_.y = 0.0; latest_q_.z = 0.0; latest_q_.w = 1.0;
+
         // 2. Setup ROS Plumbing
         odom_sub_ = nh_.subscribe("noisy_odometry", 1, &RelativeEKF::predictionCallback, this);
         yolo_sub_ = nh_.subscribe("/target_position_relative", 1, &RelativeEKF::updateCallback, this);
@@ -58,7 +65,7 @@ public:
         filtered_state_pub_ = nh_.advertise<nav_msgs::Odometry>("filtered_relative_state", 10);
         filtered_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("filtered_target_position", 10);
 
-        ROS_INFO("Relative EKF Node (RK4 + GA Frame TF) Initialized. Waiting for YOLO...");
+        ROS_INFO("Robust GA-Frame Relative EKF Initialized. Waiting for YOLO...");
     }
 
     Eigen::Matrix3d skew(const Eigen::Vector3d& v) {
@@ -67,6 +74,31 @@ public:
               v(2),  0.0,  -v(0),
              -v(1),  v(0),   0.0;
         return S;
+    }
+
+    // Helper: Calculates the matrix that removes Roll and Pitch, keeping only Yaw
+    // Helper: Calculates the matrix that transforms a vector from Body to GA Frame
+    Eigen::Matrix3d getDerotationMatrix(const geometry_msgs::Quaternion& msg_q) {
+        // 1. Get the World-to-Body quaternion
+        tf2::Quaternion q_world_to_base;
+        tf2::fromMsg(msg_q, q_world_to_base);
+
+        // 2. Extract Yaw
+        double roll, pitch, yaw;
+        tf2::Matrix3x3(q_world_to_base).getRPY(roll, pitch, yaw);
+
+        // 3. Create the World-to-GA quaternion (Yaw only)
+        tf2::Quaternion q_world_to_ga;
+        q_world_to_ga.setRPY(0.0, 0.0, yaw);
+
+        // 4. Calculate Body-to-GA rotation
+        // Math: v_ga = q_world_to_ga_inverse * q_world_to_base * v_body
+        Eigen::Quaterniond e_q_world_to_base(msg_q.w, msg_q.x, msg_q.y, msg_q.z);
+        Eigen::Quaterniond e_q_world_to_ga(q_world_to_ga.w(), q_world_to_ga.x(), q_world_to_ga.y(), q_world_to_ga.z());
+        
+        Eigen::Quaterniond q_body_to_ga = e_q_world_to_ga.inverse() * e_q_world_to_base;
+        
+        return q_body_to_ga.toRotationMatrix();
     }
 
     Eigen::VectorXd computeDynamics(const Eigen::VectorXd& state, 
@@ -83,6 +115,9 @@ public:
     }
 
     void predictionCallback(const nav_msgs::Odometry::ConstPtr& msg) {
+        // Store attitude immediately for the YOLO update callback to use
+        latest_q_ = msg->pose.pose.orientation;
+
         if (!is_initialized_) return; 
 
         ros::Time current_time = msg->header.stamp;
@@ -93,18 +128,41 @@ public:
             return; 
         }
 
-        Eigen::Vector3d v_drone(msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z);
-        Eigen::Vector3d w_drone(msg->twist.twist.angular.x, msg->twist.twist.angular.y, msg->twist.twist.angular.z);
+        // 1. Extract pure body velocities
+        Eigen::Vector3d v_body(msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z);
+        Eigen::Vector3d w_body(msg->twist.twist.angular.x, msg->twist.twist.angular.y, msg->twist.twist.angular.z);
 
-        Eigen::VectorXd k1 = computeDynamics(x_, v_drone, w_drone);
-        Eigen::VectorXd k2 = computeDynamics(x_ + 0.5 * dt * k1, v_drone, w_drone);
-        Eigen::VectorXd k3 = computeDynamics(x_ + 0.5 * dt * k2, v_drone, w_drone);
-        Eigen::VectorXd k4 = computeDynamics(x_ + dt * k3, v_drone, w_drone);
+        // 2. Transform linear velocity into the GA Frame
+        Eigen::Matrix3d R_derotate = getDerotationMatrix(latest_q_);
+        Eigen::Vector3d v_ga = R_derotate * v_body;
+
+        // 3. Extract the true global Yaw Rate for the GA frame kinematics
+        tf2::Quaternion q;
+        tf2::fromMsg(latest_q_, q);
+        double roll, pitch, yaw;
+        tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+        
+        // Euler Kinematics: true yaw rate (psi_dot) from body rates
+        double cos_pitch = cos(pitch);
+        double yaw_rate = w_body(2); // Fallback to raw yaw rate if perfectly vertical
+        if (std::abs(cos_pitch) > 1e-3) {
+            yaw_rate = (w_body(1) * sin(roll) + w_body(2) * cos(roll)) / cos_pitch;
+        }
+        
+        // GA Frame only rotates around Z
+        Eigen::Vector3d w_ga(0.0, 0.0, yaw_rate); 
+
+        // 4. RK4 Integration (using GA vectors!)
+        Eigen::VectorXd k1 = computeDynamics(x_, v_ga, w_ga);
+        Eigen::VectorXd k2 = computeDynamics(x_ + 0.5 * dt * k1, v_ga, w_ga);
+        Eigen::VectorXd k3 = computeDynamics(x_ + 0.5 * dt * k2, v_ga, w_ga);
+        Eigen::VectorXd k4 = computeDynamics(x_ + dt * k3, v_ga, w_ga);
 
         x_ += (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
 
+        // 5. Covariance Update
         Eigen::MatrixXd F = Eigen::MatrixXd::Zero(6, 6);
-        Eigen::Matrix3d w_skew = skew(w_drone);
+        Eigen::Matrix3d w_skew = skew(w_ga);
         F.block<3, 3>(0, 0) = -w_skew;
         F.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity();
         F.block<3, 3>(3, 3) = -w_skew;
@@ -118,6 +176,7 @@ public:
     }
 
     void updateCallback(const geometry_msgs::PointStamped::ConstPtr& msg) {
+        // 1. Transform to pure body frame
         geometry_msgs::PointStamped pt_body;
         try {
             tf_buffer_.transform(*msg, pt_body, "chaser_drone/base_link", ros::Duration(0.1));
@@ -126,102 +185,82 @@ public:
             return;
         }
 
-        double flu_x = pt_body.point.x;
-        double flu_y = pt_body.point.y;
-        double flu_z = pt_body.point.z;
+        Eigen::Vector3d z_body(pt_body.point.x, pt_body.point.y, pt_body.point.z);
+
+        // 2. CRITICAL CHANGE: Derotate measurement into GA Frame BEFORE the EKF sees it
+        Eigen::Matrix3d R_derotate = getDerotationMatrix(latest_q_);
+        Eigen::Matrix3d R_noise_ga = R_derotate * R_ * R_derotate.transpose();
+        Eigen::Vector3d z_ga = R_derotate * z_body;
 
         if (!is_initialized_) {
-            x_(0) = flu_x; x_(1) = flu_y; x_(2) = flu_z;
+            x_(0) = z_ga(0); x_(1) = z_ga(1); x_(2) = z_ga(2);
             last_odom_time_ = pt_body.header.stamp;
             is_initialized_ = true;
-            ROS_INFO("EKF Initialized with detection transformed to body frame.");
+            ROS_INFO("EKF Initialized directly in the GA Frame.");
             return;
         }
 
-        Eigen::Vector3d z(flu_x, flu_y, flu_z);
+        // 3. EKF Update (Comparing GA observation to GA prediction)
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, 6);
         H.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
 
-        Eigen::Vector3d y = z - H * x_;
-        Eigen::MatrixXd S = H * P_ * H.transpose() + R_;
+        Eigen::Vector3d y = z_ga - H * x_;
+        Eigen::MatrixXd S = H * P_ * H.transpose() + R_noise_ga;
         Eigen::MatrixXd K = P_ * H.transpose() * S.inverse();
         x_ = x_ + K * y;
+        
         Eigen::MatrixXd I = Eigen::MatrixXd::Identity(6, 6);
         P_ = (I - K * H) * P_;
     }
 
     void publishState(ros::Time stamp, const nav_msgs::Odometry::ConstPtr& drone_odom) {
-        // --- 1. Extract RPY from the drone's current orientation ---
+        // --- 1. Broadcast TF: base_link -> ga_body_frame ---
+        // (We still need to broadcast this so RViz knows how to draw the GA frame)
         tf2::Quaternion q_world_to_base;
         tf2::fromMsg(drone_odom->pose.pose.orientation, q_world_to_base);
         
         double roll, pitch, yaw;
         tf2::Matrix3x3(q_world_to_base).getRPY(roll, pitch, yaw);
 
-        // --- 2. Construct Gravity-Aligned (GA) Frame Quaternion ---
-        // The GA frame has the exact same Yaw as the drone, but 0 Roll and 0 Pitch.
         tf2::Quaternion q_world_to_ga;
         q_world_to_ga.setRPY(0.0, 0.0, yaw);
 
-        // --- 3. Broadcast TF: base_link -> ga_body_frame ---
-        // To find the rotation describing GA frame relative to Base Link:
-        // q_base_to_ga = q_world_to_base_inverse * q_world_to_ga
         tf2::Quaternion q_base_to_ga = q_world_to_base.inverse() * q_world_to_ga;
         q_base_to_ga.normalize();
 
         geometry_msgs::TransformStamped t_msg;
         t_msg.header.stamp = stamp;
-        t_msg.header.frame_id = "chaser_drone/base_link"; // Parent
-        t_msg.child_frame_id = "ga_body_frame";            // Child
+        t_msg.header.frame_id = "chaser_drone/base_link"; 
+        t_msg.child_frame_id = "ga_body_frame";            
         t_msg.transform.translation.x = 0.0;
         t_msg.transform.translation.y = 0.0;
         t_msg.transform.translation.z = 0.0;
         t_msg.transform.rotation = tf2::toMsg(q_base_to_ga);
-        
         tf_broadcaster_.sendTransform(t_msg);
 
-        // --- 4. Transform Target State for RL Agent ---
-        // We must map our internal EKF state (pure body frame) into the GA frame.
-        // Math: p_GA = R_world_to_GA_inverse * R_world_to_base * p_body
-        Eigen::Quaterniond e_q_world_to_base(
-            drone_odom->pose.pose.orientation.w,
-            drone_odom->pose.pose.orientation.x,
-            drone_odom->pose.pose.orientation.y,
-            drone_odom->pose.pose.orientation.z
-        );
-        Eigen::Quaterniond e_q_world_to_ga(
-            q_world_to_ga.w(), q_world_to_ga.x(), q_world_to_ga.y(), q_world_to_ga.z()
-        );
-
-        Eigen::Vector3d p_rel_body(x_(0), x_(1), x_(2));
-        Eigen::Vector3d v_tgt_body(x_(3), x_(4), x_(5));
-
-        Eigen::Vector3d p_rel_ga = e_q_world_to_ga.inverse() * (e_q_world_to_base * p_rel_body);
-        Eigen::Vector3d v_tgt_ga = e_q_world_to_ga.inverse() * (e_q_world_to_base * v_tgt_body);
-
-        // --- 5. Publish Clean GA Observation to RL ---
+        // --- 2. Publish Clean GA Observation to RL ---
+        // Because x_ is already calculated in the GA frame, no math is needed here!
         nav_msgs::Odometry out_msg;
         out_msg.header.stamp = stamp;
         out_msg.header.frame_id = "ga_body_frame"; 
         
-        // Output in standard FLU (Front, Left, Up) relative to the horizon
-        out_msg.pose.pose.position.x = p_rel_ga(0);
-        out_msg.pose.pose.position.y = p_rel_ga(1);
-        out_msg.pose.pose.position.z = p_rel_ga(2);
+        out_msg.pose.pose.position.x = x_(0);
+        out_msg.pose.pose.position.y = x_(1);
+        out_msg.pose.pose.position.z = x_(2);
         
-        out_msg.twist.twist.linear.x = v_tgt_ga(0); 
-        out_msg.twist.twist.linear.y = v_tgt_ga(1); 
-        out_msg.twist.twist.linear.z = v_tgt_ga(2);  
+        out_msg.twist.twist.linear.x = x_(3); 
+        out_msg.twist.twist.linear.y = x_(4); 
+        out_msg.twist.twist.linear.z = x_(5);  
 
         filtered_state_pub_.publish(out_msg);
 
-        // Publish pure body point for visualization (RViz)
+        // --- 3. Publish RViz Point ---
         geometry_msgs::PointStamped point_msg;
         point_msg.header.stamp = stamp;
         point_msg.header.frame_id = "ga_body_frame";
-        point_msg.point.x = p_rel_ga(0);
-        point_msg.point.y = p_rel_ga(1);
-        point_msg.point.z = p_rel_ga(2);
+        point_msg.point.x = x_(0);
+        point_msg.point.y = x_(1);
+        point_msg.point.z = x_(2);
         
         filtered_point_pub_.publish(point_msg);
     }
