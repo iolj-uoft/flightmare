@@ -52,16 +52,28 @@ def main():
 
         x_l, y_l, x_r, y_r = -1.0, -1.0, -1.0, -1.0
 
-        # 2. EXTRACT LEFT CENTER
+        # 2. EXTRACT LEFT CENTER (highest-confidence box)
         if len(res_left.boxes) > 0:
-            # Grab the highest confidence box: xyxy format is [x_min, y_min, x_max, y_max]
-            box_l = res_left.boxes[0].xyxy[0].cpu().numpy() 
+            try:
+                xyxy_left = res_left.boxes.xyxy.cpu().numpy()
+                confs_left = res_left.boxes.conf.cpu().numpy()
+                top_i = int(confs_left.argmax())
+                box_l = xyxy_left[top_i]
+            except Exception:
+                # Fallback in case of API differences
+                box_l = res_left.boxes[0].xyxy[0].cpu().numpy()
             x_l = (box_l[0] + box_l[2]) / 2.0
             y_l = (box_l[1] + box_l[3]) / 2.0
 
-        # 3. EXTRACT RIGHT CENTER
+        # 3. EXTRACT RIGHT CENTER (highest-confidence box)
         if len(res_right.boxes) > 0:
-            box_r = res_right.boxes[0].xyxy[0].cpu().numpy()
+            try:
+                xyxy_right = res_right.boxes.xyxy.cpu().numpy()
+                confs_right = res_right.boxes.conf.cpu().numpy()
+                top_j = int(confs_right.argmax())
+                box_r = xyxy_right[top_j]
+            except Exception:
+                box_r = res_right.boxes[0].xyxy[0].cpu().numpy()
             x_r = (box_r[0] + box_r[2]) / 2.0
             y_r = (box_r[1] + box_r[3]) / 2.0
 
@@ -95,7 +107,7 @@ def main():
     
     # ApproximateTimeSynchronizer links the frames together. 
     # slop=0.05 means timestamps can be off by max 50ms and still be considered a matched pair.
-    ts = message_filters.ApproximateTimeSynchronizer([sub_left, sub_right], queue_size=5, slop=0.05)
+    ts = message_filters.ApproximateTimeSynchronizer([sub_left, sub_right], queue_size=5, slop=0.03)
     ts.registerCallback(sync_callback)
 
     rospy.loginfo("YOLO Stereo Node running and publishing to %s and %s", out_image_left_topic, out_image_right_topic)
