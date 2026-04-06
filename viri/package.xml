@@ -13,6 +13,10 @@
   <!-- required system building tools for building the package -->
   <buildtool_depend>catkin</buildtool_depend>
   <buildtool_depend>catkin_simple</buildtool_depend>
+  
+  <!-- Message generation -->
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
 
   <!-- Entries: package runtime/build dependencies -->
   <depend>flightlib</depend>

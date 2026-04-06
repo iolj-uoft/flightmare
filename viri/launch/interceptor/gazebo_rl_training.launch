@@ -1,0 +1,129 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Args & Params for Gazebo-only RL Training -->
+  <arg name="quad_name" default="chaser_drone"/>
+  <arg name="mav_name" default="$(arg quad_name)"/>
+  <arg name="target_name" default="target_drone"/>
+  <arg name="model" value="$(find rotors_description)/urdf/mav_generic_odometry_sensor.gazebo"/>
+  <arg name="world_name" default="$(find rotors_gazebo)/worlds/basic.world"/>
+
+  <arg name="paused" value="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="verbose" default="false"/>
+  
+  <arg name="enable_ground_truth" default="true"/>
+  <arg name="enable_command_feedthrough" default="true"/>
+  <arg name="enable_logging" default="false"/>
+  <arg name="log_file" default="$(arg mav_name)"/>
+  <arg name="custom_models" default=""/>
+
+  <arg name="x_init" default="0"/>
+  <arg name="y_init" default="0"/>
+
+  <param name="use_sim_time" value="true"/>
+    
+  <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models:$(arg custom_models)"/>
+  <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models"/>
+  
+  <arg name="enable_test_action_publisher" default="true"/>
+
+  <!-- Launch Gazebo without GUI for faster simulation -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_name)" />
+    <arg name="debug" value="$(arg debug)" />
+    <arg name="paused" value="$(arg paused)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="verbose" value="$(arg verbose)"/>
+  </include>
+
+  <!-- ============================================ -->
+  <!-- TARGET DRONE (Simple controller, no vision) -->
+  <!-- ============================================ -->
+  <group ns="$(arg target_name)">
+    <!-- Spawn target UAV -->
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name" value="hummingbird" /> 
+      <arg name="namespace" value="$(arg target_name)" />
+      <arg name="model" value="$(arg model)" /> 
+      <arg name="enable_logging" value="false" />
+      <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
+      <arg name="log_file" value="$(arg target_name)"/>
+      <arg name="x" value="5.0" /> 
+      <arg name="y" value="0.0" />
+      <arg name="z" value="1.0" />
+    </include>
+
+    <!-- Low-level motor controller interface -->
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface" name="rpg_rotors_interface" output="screen" >
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml" />
+      <remap from="odometry" to="ground_truth/odometry" />
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm" />
+    </node>
+
+    <!-- Position controller for target drone (pre-programmed trajectory) -->
+    <node pkg="autopilot" type="autopilot" name="autopilot" output="log">
+      <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml" />
+      <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml" />
+      <param name="kpxy" value="10.0" />
+      <param name="kdxy" value="8.0" />
+      <param name="kpz" value="12.0" />
+      
+      <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml" />
+      <param name="position_controller/use_rate_mode" value="True" />
+      <param name="velocity_estimate_in_world_frame" value="false" />
+      <param name="state_estimate_timeout" value="0.1" />
+      <param name="control_command_delay" value="0.01" />
+      <param name="enable_command_feedthrough" value="true" />
+      <remap from="autopilot/state_estimate" to="ground_truth/odometry" />
+    </node>
+  </group>
+
+  <!-- Target motion publisher (generates reference trajectories) -->
+  <node pkg="viri" type="target_manager.py" name="target_manager" output="screen" />
+
+  <!-- ============================================ -->
+  <!-- CHASER DRONE (RL Agent controlled)          -->
+  <!-- ============================================ -->
+  <group ns="$(arg mav_name)">
+    <!-- Spawn chaser UAV -->
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name" value="hummingbird" /> 
+      <arg name="namespace" value="$(arg mav_name)" />
+      <arg name="model" value="$(arg model)" />
+      <arg name="enable_logging" value="$(arg enable_logging)" />
+      <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
+      <arg name="log_file" value="$(arg log_file)"/>
+      <arg name="x" value="$(arg x_init)" />
+      <arg name="y" value="$(arg y_init)" />
+      <arg name="z" value="0.5" />
+    </include>
+
+    <!-- Low-level motor controller interface -->
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface" name="rpg_rotors_interface" output="screen" >
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml" />
+      <remap from="odometry" to="ground_truth/odometry" />
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm" />
+    </node>
+
+    <!-- RL Agent Node: Takes GT relative state as input, outputs attitude commands -->
+    <!-- NOTE: NO AUTOPILOT for chaser - RL agent sends direct control commands to rpg_rotors_interface -->
+    <node pkg="viri" type="gazebo_rl_agent_node" name="rl_agent" output="screen">
+      <param name="control_freq" value="50.0" />
+      <param name="max_episode_time" value="30.0" />
+      <param name="max_relative_distance" value="100.0" />
+      <!-- Observation space: relative_pos_x, relative_pos_y, relative_pos_z, relative_vel_x, relative_vel_y, relative_vel_z -->
+      <!-- Action space: roll_cmd, pitch_cmd, yaw_rate_cmd, thrust_cmd (normalized [-1, 1]) -->
+    </node>
+
+    <!-- Ground truth state publisher for debugging/monitoring -->
+    <node pkg="viri" type="state_monitor_node" name="state_monitor" output="log">
+      <param name="publish_freq" value="10.0" />
+    </node>
+  </group>
+
+  <!-- Optional: Simple test action publisher (for debugging without full RL training) -->
+  <node if="$(arg enable_test_action_publisher)" pkg="viri" type="test_action_publisher.py" name="test_action_pub" output="screen">
+    <remap from="rl_action" to="chaser_drone/rl_action" />
+  </node>
+
+</launch>

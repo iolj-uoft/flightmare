@@ -2,11 +2,49 @@ cmake_minimum_required(VERSION 3.0.0)
 
 project(viri)
 
-find_package(catkin_simple REQUIRED)
+# Standard catkin setup with message generation
+find_package(catkin REQUIRED
+  COMPONENTS
+  message_generation
+  roscpp
+  std_msgs
+  geometry_msgs
+  nav_msgs
+  quadrotor_msgs
+  rosgraph_msgs
+)
+
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 
-catkin_simple()
+# Declare message files
+add_message_files(
+  FILES
+  RLAction.msg
+)
+
+# Generate messages
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
+# Catkin package declaration
+catkin_package(
+  INCLUDE_DIRS
+  LIBRARIES
+  CATKIN_DEPENDS
+    roscpp
+    std_msgs
+    geometry_msgs
+    nav_msgs
+    quadrotor_msgs
+    message_runtime
+  DEPENDS
+    Eigen3
+)
+
+include_directories(${EIGEN3_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 
 # Setup Default Build Type as Release
 if (NOT CMAKE_BUILD_TYPE)
@@ -33,60 +71,31 @@ add_compile_options(-O3)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_ARCH_FLAGS} -Wall -DNDEBUG -fPIC")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -Wall -g")
 
-include_directories(${EIGEN3_INCLUDE_DIRS})
+# Gazebo RL Training Nodes (using standard CMake, not catkin_simple)
+add_executable(gazebo_rl_agent_node src/training/gazebo_rl_agent_node.cpp)
+add_dependencies(gazebo_rl_agent_node ${PROJECT_NAME}_generate_messages_cpp)
+target_link_libraries(gazebo_rl_agent_node ${catkin_LIBRARIES} Eigen3::Eigen stdc++fs)
 
-# pilot
-cs_add_library(flight_pilot src/pilot/flight_pilot.cpp)
-target_link_libraries(flight_pilot ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs)
+add_executable(state_monitor_node src/training/state_monitor_node.cpp)
+add_dependencies(state_monitor_node ${PROJECT_NAME}_generate_messages_cpp)
+target_link_libraries(state_monitor_node ${catkin_LIBRARIES} stdc++fs)
 
-cs_add_executable(flight_pilot_node src/pilot/flight_pilot_node.cpp)
-target_link_libraries(flight_pilot_node flight_pilot ${OpenCV_LIBRARIES} stdc++fs)
-
-# racing
-cs_add_executable(racing src/racing/racing.cpp)
-target_link_libraries(racing ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs zmq zmqpp)
-
-# camera
-cs_add_executable(data_generation
-    src/data_generation/main.cpp
-    src/data_generation/SensorPublisher.cpp
-    src/data_generation/EnvironmentManager.cpp
-    src/data_generation/TrajectoryGenerator.cpp
-)
-target_link_libraries(data_generation ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs zmq zmqpp)
-
-# camera recorder
-cs_add_executable(camera_recorder src/data_generation/camera_recorder.cpp)
-    
-# interceptor
-cs_add_library(interceptor src/interceptor/interceptor.cpp)
-target_link_libraries(interceptor ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs)
-
-cs_add_executable(interceptor_node src/interceptor/interceptor_node.cpp)
-target_link_libraries(interceptor_node interceptor ${OpenCV_LIBRARIES} stdc++fs)
-
-# Relative EKF Estimation Node
-cs_add_executable(ekf_estimation_node src/interceptor/relative_eskf_node.cpp)
-target_link_libraries(ekf_estimation_node ${catkin_LIBRARIES} stdc++fs)
-
-# Depth Estimation
-cs_add_library(depth_estimation src/depth_estimation/depth_estimation.cpp)
-target_link_libraries(depth_estimation ${catkin_LIBRARIES} stdc++fs)
-
-cs_add_executable(depth_estimation_node src/depth_estimation/depth_estimation_node.cpp)
-target_link_libraries(depth_estimation_node depth_estimation ${catkin_LIBRARIES} stdc++fs)
-
-# Odom Noise Injection
-cs_add_executable(odom_noise_injector src/odom_noise_injector/odom_noise_injector.cpp)
-target_link_libraries(odom_noise_injector ${catkin_LIBRARIES} stdc++fs)
-
-# YOLO (Python Script Installation)
+# Python Script Installation
 catkin_install_python(PROGRAMS
     scripts/yolo_stereo_node.py
     scripts/target_manager.py
+    scripts/test_action_publisher.py
+    scripts/thrust_diagnostic.py
+    scripts/test_manual_control.py
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-# Finish
-cs_install()
-cs_export()
+# Install targets
+install(TARGETS gazebo_rl_agent_node state_monitor_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# Old targets (commenting out for now - use only if needed)
+# If you need the other targets, uncomment and add back catkin_simple support
