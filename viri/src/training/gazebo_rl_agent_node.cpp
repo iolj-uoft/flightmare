@@ -66,15 +66,26 @@ public:
     static constexpr double CRASH_DETECTION_DISABLED_TIME = 2.0;  // seconds after reset to disable crash detection
 public:
     GazeboRLAgentNode(const ros::NodeHandle& nh) : nh_(nh), armed_(false) {
+        // Per-env configurable params (defaults match single-env gazebo_rl_training.launch).
+        // Use private NodeHandle ("~") so <param> tags inside <node> are found correctly.
+        ros::NodeHandle pnh("~");
+        std::string target_odom_topic;
+        std::string target_arm_topic;
+        pnh.param<std::string>("target_odom_topic",  target_odom_topic,  "/target_drone/ground_truth/odometry");
+        pnh.param<std::string>("chaser_model_name",  chaser_model_name_, "chaser_drone");
+        pnh.param<std::string>("target_model_name",  target_model_name_, "target_drone");
+        pnh.param<std::string>("target_arm_topic",   target_arm_topic,   "/target_drone/bridge/arm");
+        pnh.param<double>     ("reset_y_offset",     reset_y_offset_,    0.0);
+
         // Subscribers
         chaser_odom_sub_ = nh_.subscribe(
             "ground_truth/odometry", 1,
             &GazeboRLAgentNode::chaserOdomCallback, this);
-        
+
         target_odom_sub_ = nh_.subscribe(
-            "/target_drone/ground_truth/odometry", 1,
+            target_odom_topic, 1,
             &GazeboRLAgentNode::targetOdomCallback, this);
-        
+
         action_sub_ = nh_.subscribe(
             "rl_action", 10,
             &GazeboRLAgentNode::actionCallback, this);
@@ -82,33 +93,33 @@ public:
         reset_sub_ = nh_.subscribe(
             "rl_reset", 1,
             &GazeboRLAgentNode::resetCallback, this);
-        
+
         // Publishers
-        // Direct control to rpg_rotors_interface (bypasses autopilot)
         control_pub_ = nh_.advertise<quadrotor_msgs::ControlCommand>(
             "control_command", 1);
-        
-        // Arm/disarm signal to motor controller
+
         arm_pub_ = nh_.advertise<std_msgs::Bool>(
             "bridge/arm", 1);
-        
+
+        target_arm_pub_ = nh_.advertise<std_msgs::Bool>(
+            target_arm_topic, 1);
+
         obs_pub_ = nh_.advertise<viri::RLObservation>(
             "rl_observation", 1);
-        
+
         reward_pub_ = nh_.advertise<std_msgs::Float32>(
             "rl_reward", 1);
-        
+
         rel_vel_pub_ = nh_.advertise<geometry_msgs::Vector3>(
             "rl_relative_velocity", 1);
-        
-        // Crash/flip detection publishers
+
         done_pub_ = nh_.advertise<std_msgs::Bool>(
             "rl_episode_done", 1);
-        
+
         crash_reason_pub_ = nh_.advertise<std_msgs::Bool>(
             "rl_crashed", 1);
-        
-        // Service clients for episode reset
+
+        // Service clients — same Gazebo instance for all envs
         gazebo_set_model_state_client_ = nh_.serviceClient<gazebo_msgs::SetModelState>(
             "/gazebo/set_model_state");
         gazebo_get_model_state_client_ = nh_.serviceClient<gazebo_msgs::GetModelState>(
@@ -376,6 +387,12 @@ private:
         
         Eigen::Vector3d rel_vel = target_vel - chaser_vel;
         
+        // Detect target knockdown (hit ground) and silently restore it.
+        // Cooldown prevents calling the service every step while target is still falling.
+        if (target_pos(2) < 0.3 && ros::Time::now() > target_reset_cooldown_) {
+            resetTarget();
+        }
+
         // Check for crash and flip conditions
         bool crashed = checkCrash(chaser_pos);
         bool flipped = checkFlip(chaser_odom_.pose.pose.orientation);
@@ -387,8 +404,10 @@ private:
         // Check if drone has risen too high above the target (degenerate upward escape behavior)
         bool too_high = (chaser_pos(2) - target_pos(2) > 10.0);
 
-        // Check if chaser is within 30cm of target (success condition)
-        bool target_reached = (pos_error < 0.3);
+        // Success threshold — read dynamically so Python curriculum callback can update it
+        double success_threshold = 0.3;
+        ros::param::get("/rl_success_threshold", success_threshold);
+        bool target_reached = (pos_error < success_threshold);
         
         double reward = 0.0;
         
@@ -540,6 +559,53 @@ private:
     }
 
     /**
+     * Teleport target drone back to its spawn point and re-arm it.
+     * Called when target altitude drops below 0.3 m (knocked over by chaser).
+     */
+    void resetTarget() {
+        // Step 1: Disarm to flush PID integrator state in rpg_rotors_interface.
+        // If we skip this the wound-up integrators cause violent oscillation on re-arm.
+        std_msgs::Bool disarm_msg;
+        disarm_msg.data = false;
+        for (int i = 0; i < 5; ++i) {
+            target_arm_pub_.publish(disarm_msg);
+            ros::Duration(0.05).sleep();
+        }
+        ros::Duration(0.3).sleep();  // let interface reach disarmed state
+
+        // Step 2: Teleport to spawn point with zero velocity.
+        gazebo_msgs::SetModelState req;
+        req.request.model_state.model_name     = target_model_name_;
+        req.request.model_state.reference_frame = "world";
+        req.request.model_state.pose.position.x = 5.0;
+        req.request.model_state.pose.position.y = reset_y_offset_;
+        req.request.model_state.pose.position.z = 1.0;
+        req.request.model_state.pose.orientation.w = 1.0;
+        req.request.model_state.twist = geometry_msgs::Twist();  // zero velocity
+
+        if (!gazebo_set_model_state_client_.call(req)) {
+            ROS_ERROR("Failed to reset target drone position.");
+            target_reset_cooldown_ = ros::Time::now() + ros::Duration(3.0);
+            return;
+        }
+        ROS_WARN("Target knocked down — teleported back to (5, %.0f, 1).", reset_y_offset_);
+
+        // Step 3: Wait for Gazebo to settle at the new pose before re-arming,
+        // so the autopilot's velocity estimator sees near-zero velocity on startup.
+        ros::Duration(0.5).sleep();
+
+        // Step 4: Re-arm — autopilot transitions from off→hover with clean integrators.
+        std_msgs::Bool arm_msg;
+        arm_msg.data = true;
+        for (int i = 0; i < 15; ++i) {
+            target_arm_pub_.publish(arm_msg);
+            ros::Duration(0.05).sleep();
+        }
+
+        target_reset_cooldown_ = ros::Time::now() + ros::Duration(4.0);
+    }
+
+    /**
      * Reset the chaser drone to initial position and zero velocity
      */
     void resetEpisode() {
@@ -548,12 +614,12 @@ private:
 
         // Create SetModelState request
         gazebo_msgs::SetModelState reset_msg;
-        reset_msg.request.model_state.model_name = "chaser_drone";
+        reset_msg.request.model_state.model_name = chaser_model_name_;
         reset_msg.request.model_state.reference_frame = "world";
 
         // Set initial position (0.5m above ground to avoid immediate ground contact)
         reset_msg.request.model_state.pose.position.x = 0.0;
-        reset_msg.request.model_state.pose.position.y = 0.0;
+        reset_msg.request.model_state.pose.position.y = reset_y_offset_;
         reset_msg.request.model_state.pose.position.z = 0.5;
 
         // Set level orientation (identity quaternion)
@@ -596,6 +662,7 @@ private:
     // Publishers
     ros::Publisher control_pub_;
     ros::Publisher arm_pub_;
+    ros::Publisher target_arm_pub_;
     ros::Publisher obs_pub_;
     ros::Publisher reward_pub_;
     ros::Publisher rel_vel_pub_;
@@ -621,6 +688,12 @@ private:
     std::vector<ActionHistory> action_history_;
     static constexpr int ACTION_HISTORY_SIZE = 3;
     
+    // Per-env identity (set from ROS params, defaults preserve single-env behaviour)
+    std::string chaser_model_name_;
+    std::string target_model_name_;
+    double reset_y_offset_;
+    ros::Time target_reset_cooldown_;
+
     std::mutex odom_mutex_;
     std::mutex action_mutex_;
 };

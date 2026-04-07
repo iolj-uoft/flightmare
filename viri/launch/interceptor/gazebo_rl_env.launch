@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<!-- Single RL training environment (one chaser + one target drone pair).
+     Spawn N of these alongside gazebo_base.launch for parallel training.
+
+     Args:
+       env_id    : integer identifier, e.g. 0, 1, 2 ...
+       y_offset  : Y-axis separation (metres); set to env_id * 20 by launcher script
+
+     Resulting namespaces / Gazebo model names (flat — no slashes):
+       chaser -> /chaser_drone_<env_id>
+       target -> /target_drone_<env_id>
+-->
+<launch>
+  <arg name="env_id"   default="0"/>
+  <arg name="y_offset" default="0"/>
+
+  <arg name="model" value="$(find rotors_description)/urdf/mav_generic_odometry_sensor.gazebo"/>
+
+  <!-- ==================== TARGET DRONE ==================== -->
+  <group ns="target_drone_$(arg env_id)">
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name"            value="hummingbird"/>
+      <arg name="namespace"           value="target_drone_$(arg env_id)"/>
+      <arg name="model"               value="$(arg model)"/>
+      <arg name="enable_logging"      value="false"/>
+      <arg name="enable_ground_truth" value="true"/>
+      <arg name="log_file"            value="target_drone_$(arg env_id)"/>
+      <arg name="x" value="5.0"/>
+      <arg name="y" value="$(arg y_offset)"/>
+      <arg name="z" value="1.0"/>
+    </include>
+
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface"
+          name="rpg_rotors_interface" output="log">
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml"/>
+      <remap from="odometry"                 to="ground_truth/odometry"/>
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm"/>
+    </node>
+
+    <node pkg="autopilot" type="autopilot" name="autopilot" output="log">
+      <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml"/>
+      <param name="kpxy"    value="10.0"/>
+      <param name="kdxy"    value="8.0"/>
+      <param name="kpz"     value="12.0"/>
+      <param name="position_controller/use_rate_mode"  value="True"/>
+      <param name="velocity_estimate_in_world_frame"   value="false"/>
+      <param name="state_estimate_timeout"             value="0.1"/>
+      <param name="control_command_delay"              value="0.01"/>
+      <param name="enable_command_feedthrough"         value="true"/>
+      <remap from="autopilot/state_estimate" to="ground_truth/odometry"/>
+    </node>
+  </group>
+
+  <!-- Target trajectory manager (one per env) -->
+  <node pkg="viri" type="target_manager.py" name="target_manager_$(arg env_id)" output="log">
+    <param name="target_name" value="target_drone_$(arg env_id)"/>
+  </node>
+
+  <!-- ==================== CHASER DRONE ==================== -->
+  <group ns="chaser_drone_$(arg env_id)">
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name"            value="hummingbird"/>
+      <arg name="namespace"           value="chaser_drone_$(arg env_id)"/>
+      <arg name="model"               value="$(arg model)"/>
+      <arg name="enable_logging"      value="false"/>
+      <arg name="enable_ground_truth" value="true"/>
+      <arg name="log_file"            value="chaser_drone_$(arg env_id)"/>
+      <arg name="x" value="0.0"/>
+      <arg name="y" value="$(arg y_offset)"/>
+      <arg name="z" value="0.5"/>
+    </include>
+
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface"
+          name="rpg_rotors_interface" output="log">
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml"/>
+      <remap from="odometry"                 to="ground_truth/odometry"/>
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm"/>
+    </node>
+
+    <node pkg="viri" type="gazebo_rl_agent_node" name="rl_agent" output="log">
+      <param name="control_freq"          value="50.0"/>
+      <param name="max_episode_time"      value="30.0"/>
+      <param name="max_relative_distance" value="100.0"/>
+      <!-- Per-env identity -->
+      <param name="chaser_model_name" value="chaser_drone_$(arg env_id)"/>
+      <param name="target_model_name" value="target_drone_$(arg env_id)"/>
+      <param name="target_odom_topic" value="/target_drone_$(arg env_id)/ground_truth/odometry"/>
+      <param name="target_arm_topic"  value="/target_drone_$(arg env_id)/bridge/arm"/>
+      <param name="reset_y_offset"    value="$(arg y_offset)"/>
+    </node>
+  </group>
+</launch>

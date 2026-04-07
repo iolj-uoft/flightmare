@@ -21,8 +21,42 @@ from viri.msg import RLAction, RLObservation
 from gazebo_msgs.srv import GetPhysicsProperties, SetPhysicsProperties
 
 from stable_baselines3 import PPO, SAC, TD3
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
+from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, BaseCallback
+from stable_baselines3.common.monitor import Monitor
+
+
+class CurriculumCallback(BaseCallback):
+    """
+    Shrinks the success threshold (/rl_success_threshold) as training progresses.
+
+    Schedule is a list of (timestep, threshold_metres) pairs in ascending order.
+    Example:
+        schedule = [(0, 2.0), (30_000, 1.0), (80_000, 0.5), (150_000, 0.3)]
+
+    The threshold is set to the value whose timestep milestone has been reached.
+    All C++ agent nodes read /rl_success_threshold dynamically, so the change
+    takes effect on the next publishReward() call across all envs.
+    """
+    def __init__(self, schedule, verbose=1):
+        super().__init__(verbose)
+        self.schedule = sorted(schedule, key=lambda x: x[0])
+        self._current_idx = 0
+
+    def _on_step(self) -> bool:
+        # Advance through schedule milestones
+        while (self._current_idx + 1 < len(self.schedule) and
+               self.num_timesteps >= self.schedule[self._current_idx + 1][0]):
+            self._current_idx += 1
+
+        threshold = self.schedule[self._current_idx][1]
+        current = rospy.get_param('/rl_success_threshold', None)
+        if current != threshold:
+            rospy.set_param('/rl_success_threshold', threshold)
+            if self.verbose:
+                rospy.loginfo(f"[Curriculum] step={self.num_timesteps}: "
+                              f"success_threshold → {threshold:.2f} m")
+        return True
 
 
 class GazeboRLEnv(gym.Env):
@@ -30,32 +64,44 @@ class GazeboRLEnv(gym.Env):
     
     metadata = {'render_modes': ['human']}
     
-    def __init__(self, noisy=False):
+    def __init__(self, env_id=None, noisy=False):
+        """
+        env_id: None  → single-env mode, topics at /chaser_drone/... (backward compat)
+                int   → multi-env mode,  topics at /env_<id>/chaser_drone/...
+        """
         super().__init__()
-        
+
         rospy.init_node('gazebo_rl_train', anonymous=True)
-        
-        # Observation: [rel_pos_x, rel_pos_y, rel_pos_z, rel_vel_x, rel_vel_y, rel_vel_z, 
-        #               action_hist_1/2/3 x (roll, pitch, yaw_rate, thrust)]
-        # Total: 6 state + 12 action history = 18 dimensions
+
+        # Resolve topic namespace.
+        # Multi-env uses flat names (chaser_drone_0, chaser_drone_1, ...)
+        # matching the namespace arg passed to spawn_mav.launch.
+        if env_id is not None:
+            chaser_ns = f'/chaser_drone_{env_id}'
+            gazebo_prefix = '/gazebo'  # single shared Gazebo instance
+        else:
+            chaser_ns = '/chaser_drone'
+            gazebo_prefix = '/gazebo'
+        self._chaser_ns = chaser_ns
+        self._gazebo_prefix = gazebo_prefix
+
+        # Observation: [rel_pos(3), rel_vel(3), action_history(12)] = 18D
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32
         )
-        
-        # Action: [roll, pitch, yaw_rate, thrust] all normalized in [-1, 1]
-        # Now using custom RLAction message with 4D support
+
+        # Action: [roll, pitch, yaw_rate, thrust] normalised to [-1, 1]
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(4,), dtype=np.float32
         )
-        
-        # Publishers and subscribers
-        # Subscribe to chaser drone's relative observation/reward topics
-        self.action_pub = rospy.Publisher('/chaser_drone/rl_action', RLAction, queue_size=1)
-        self.reset_pub = rospy.Publisher('/chaser_drone/rl_reset', Bool, queue_size=1)
-        self.obs_sub = rospy.Subscriber('/chaser_drone/rl_observation', RLObservation, self.obs_callback)
-        self.reward_sub = rospy.Subscriber('/chaser_drone/rl_reward', Float32, self.reward_callback)
-        self.done_sub = rospy.Subscriber('/chaser_drone/rl_episode_done', Bool, self.done_callback)
-        self.crash_sub = rospy.Subscriber('/chaser_drone/rl_crashed', Bool, self.crash_callback)
+
+        # Publishers and subscribers (all namespaced)
+        self.action_pub = rospy.Publisher(f'{chaser_ns}/rl_action', RLAction, queue_size=1)
+        self.reset_pub  = rospy.Publisher(f'{chaser_ns}/rl_reset',  Bool,     queue_size=1)
+        self.obs_sub    = rospy.Subscriber(f'{chaser_ns}/rl_observation', RLObservation, self.obs_callback)
+        self.reward_sub = rospy.Subscriber(f'{chaser_ns}/rl_reward',      Float32,       self.reward_callback)
+        self.done_sub   = rospy.Subscriber(f'{chaser_ns}/rl_episode_done', Bool,          self.done_callback)
+        self.crash_sub  = rospy.Subscriber(f'{chaser_ns}/rl_crashed',      Bool,          self.crash_callback)
         
         # State buffers
         self.rel_pos = np.zeros(3, dtype=np.float32)
@@ -75,21 +121,24 @@ class GazeboRLEnv(gym.Env):
         rospy.sleep(1)
 
         # Remove Gazebo real-time cap so simulation runs as fast as CPU allows.
-        # use_sim_time=true is already set, so all rospy.sleep() calls remain correct.
-        try:
-            rospy.wait_for_service('/gazebo/get_physics_properties', timeout=5.0)
-            get_phys = rospy.ServiceProxy('/gazebo/get_physics_properties', GetPhysicsProperties)
-            set_phys = rospy.ServiceProxy('/gazebo/set_physics_properties', SetPhysicsProperties)
-            props = get_phys()
-            set_phys(
-                time_step=props.time_step,
-                max_update_rate=0.0,  # 0 = unconstrained, run as fast as possible
-                gravity=props.gravity,
-                ode_config=props.ode_config
-            )
-            rospy.loginfo("Gazebo physics: max_update_rate set to 0 (unconstrained)")
-        except Exception as e:
-            rospy.logwarn(f"Could not set Gazebo physics properties: {e}")
+        # Only the first env needs to do this (single shared Gazebo instance).
+        if env_id is None or env_id == 0:
+            try:
+                svc = f'{self._gazebo_prefix}/get_physics_properties'
+                rospy.wait_for_service(svc, timeout=5.0)
+                get_phys = rospy.ServiceProxy(svc, GetPhysicsProperties)
+                set_phys = rospy.ServiceProxy(f'{self._gazebo_prefix}/set_physics_properties',
+                                              SetPhysicsProperties)
+                props = get_phys()
+                set_phys(
+                    time_step=props.time_step,
+                    max_update_rate=0.0,  # 0 = unconstrained
+                    gravity=props.gravity,
+                    ode_config=props.ode_config
+                )
+                rospy.loginfo("Gazebo physics: max_update_rate set to 0 (unconstrained)")
+            except Exception as e:
+                rospy.logwarn(f"Could not set Gazebo physics properties: {e}")
 
         rospy.loginfo("GazeboRLEnv initialized with 4D action space [roll, pitch, yaw_rate, thrust]")
     
@@ -160,7 +209,7 @@ class GazeboRLEnv(gym.Env):
         # Using longer wait to ensure crash/flip rewards are received
         # C++ publishes reward in actionCallback which may happen multiple times,
         # so we need to wait long enough for the latest one
-        rospy.sleep(0.04)  # 40ms to allow callbacks to process
+        rospy.sleep(0.02)  # 20ms sim-time (one control cycle at 50 Hz)
         
         # Get observation and reward (with thread-safe access)
         obs = self._get_observation()
@@ -362,6 +411,8 @@ def main():
     parser.add_argument('--save-dir', type=str, default='./models/')
     parser.add_argument('--log-dir', type=str, default='./logs/')
     parser.add_argument('--noisy', action='store_true', help='Add observation noise')
+    parser.add_argument('--n-envs', type=int, default=1,
+                        help='Number of parallel Gazebo environments (requires gazebo_rl_env.launch)')
     
     args = parser.parse_args()
     
@@ -371,22 +422,43 @@ def main():
     
     if args.train:
         rospy.loginfo("Starting training...")
-        
-        # Create environment
-        env = GazeboRLEnv(noisy=args.noisy)
-        
+
+        # Create environment(s)
+        if args.n_envs > 1:
+            rospy.loginfo(f"Using {args.n_envs} parallel environments (SubprocVecEnv)")
+            def make_env(env_id):
+                def _init():
+                    return Monitor(GazeboRLEnv(env_id=env_id, noisy=args.noisy))
+                return _init
+            env = SubprocVecEnv([make_env(i) for i in range(args.n_envs)],
+                                start_method='fork')
+            # Parent process needs a ROS node so CurriculumCallback can call
+            # rospy.get_param / rospy.set_param (subprocess envs have their own nodes).
+            rospy.init_node('trainer', anonymous=True)
+        else:
+            env = Monitor(GazeboRLEnv(noisy=args.noisy))
+
+        # Normalise observations and rewards — significantly improves PPO convergence.
+        # gamma must match the model's gamma so the running return estimate is correct.
+        env = VecNormalize(env, norm_obs=True, norm_reward=True, gamma=0.99, clip_obs=10.0)
+
         # Create model
         if args.algo == 'PPO':
+            # n_steps per env: with N envs, total rollout = n_steps * n_envs.
+            # Larger batch_size uses the GPU better.
+            n_steps_per_env = max(512, 2048 // args.n_envs)
             model = PPO(
                 'MlpPolicy',
                 env,
                 learning_rate=3e-4,
-                n_steps=2048,
-                batch_size=64,
+                n_steps=n_steps_per_env,
+                batch_size=256,
                 n_epochs=10,
                 gamma=0.99,
                 gae_lambda=0.95,
                 clip_range=0.2,
+                ent_coef=0.0001,      # encourages exploration
+                policy_kwargs=dict(net_arch=[256, 256], log_std_init=-0.5),
                 verbose=1,
                 tensorboard_log=args.log_dir
             )
@@ -421,17 +493,28 @@ def main():
             save_path=args.save_dir,
             name_prefix=f'{args.algo.lower()}_gazebo_rl'
         )
-        
+
+        # Curriculum: shrink success radius as agent improves.
+        # Edit this schedule to taste — (timestep, threshold_metres).
+        curriculum_callback = CurriculumCallback(schedule=[
+            (0,       2.0),   # start easy
+            (30_000,  1.0),
+            (80_000,  0.5),
+            (150_000, 0.3),   # final goal
+        ])
+
         # Train
         model.learn(
             total_timesteps=args.timesteps,
-            callback=checkpoint_callback,
+            callback=[checkpoint_callback, curriculum_callback],
             tb_log_name=f"{args.algo.lower()}_training"
         )
         
-        # Save final model
-        model.save(os.path.join(args.save_dir, f'{args.algo.lower()}_gazebo_rl_final'))
-        rospy.loginfo("Training complete!")
+        # Save final model and normalisation stats (required for correct inference)
+        final_path = os.path.join(args.save_dir, f'{args.algo.lower()}_gazebo_rl_final')
+        model.save(final_path)
+        env.save(final_path + '_vecnorm.pkl')
+        rospy.loginfo(f"Training complete! Model: {final_path}")
     
     elif args.test:
         rospy.loginfo(f"Testing model: {args.test}")
