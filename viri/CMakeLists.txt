@@ -21,6 +21,7 @@ find_package(Eigen3 REQUIRED)
 add_message_files(
   FILES
   RLAction.msg
+  RLObservation.msg
 )
 
 # Generate messages
