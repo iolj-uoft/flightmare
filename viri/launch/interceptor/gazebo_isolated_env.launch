@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!-- Self-contained single-env launch for isolated multi-instance training.
+     Each instance of this launch file runs in its own ROS master (port-shifted),
+     so default namespaces /chaser_drone and /target_drone are used — no env_id needed.
+
+     Usage (from launch_isolated_training.sh):
+       ROS_MASTER_URI=http://localhost:<PORT> \
+       GAZEBO_MASTER_URI=http://localhost:<GAZ_PORT> \
+           roslaunch viri gazebo_isolated_env.launch gui:=false
+-->
+<launch>
+  <arg name="gui" default="false"/>
+
+  <!-- Gazebo world -->
+  <include file="$(find viri)/launch/interceptor/gazebo_base.launch">
+    <arg name="gui" value="$(arg gui)"/>
+  </include>
+
+  <!-- One chaser + one target drone pair at default positions -->
+  <include file="$(find viri)/launch/interceptor/gazebo_rl_env.launch">
+    <arg name="env_id"   value="0"/>
+    <arg name="y_offset" value="0"/>
+  </include>
+</launch>

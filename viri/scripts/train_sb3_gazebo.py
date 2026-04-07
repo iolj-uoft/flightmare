@@ -37,11 +37,16 @@ class CurriculumCallback(BaseCallback):
     The threshold is set to the value whose timestep milestone has been reached.
     All C++ agent nodes read /rl_success_threshold dynamically, so the change
     takes effect on the next publishReward() call across all envs.
+
+    isolated_ports: list of ROS master ports (one per isolated env). When set,
+    the param is broadcast to every port via rosparam subprocess instead of
+    rospy (which only reaches a single master).
     """
-    def __init__(self, schedule, verbose=1):
+    def __init__(self, schedule, isolated_ports=None, verbose=1):
         super().__init__(verbose)
         self.schedule = sorted(schedule, key=lambda x: x[0])
         self._current_idx = 0
+        self.isolated_ports = isolated_ports  # None = shared-master mode
 
     def _on_step(self) -> bool:
         # Advance through schedule milestones
@@ -50,12 +55,25 @@ class CurriculumCallback(BaseCallback):
             self._current_idx += 1
 
         threshold = self.schedule[self._current_idx][1]
-        current = rospy.get_param('/rl_success_threshold', None)
-        if current != threshold:
-            rospy.set_param('/rl_success_threshold', threshold)
+
+        if self.isolated_ports:
+            # Each env has its own ROS master — set param on all of them via subprocess
+            for port in self.isolated_ports:
+                subprocess.run(
+                    ['rosparam', 'set', '/rl_success_threshold', str(threshold)],
+                    env={**os.environ, 'ROS_MASTER_URI': f'http://localhost:{port}'},
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
             if self.verbose:
                 rospy.loginfo(f"[Curriculum] step={self.num_timesteps}: "
-                              f"success_threshold → {threshold:.2f} m")
+                              f"success_threshold → {threshold:.2f} m (broadcast to {len(self.isolated_ports)} masters)")
+        else:
+            current = rospy.get_param('/rl_success_threshold', None)
+            if current != threshold:
+                rospy.set_param('/rl_success_threshold', threshold)
+                if self.verbose:
+                    rospy.loginfo(f"[Curriculum] step={self.num_timesteps}: "
+                                  f"success_threshold → {threshold:.2f} m")
         return True
 
 
@@ -413,7 +431,11 @@ def main():
     parser.add_argument('--noisy', action='store_true', help='Add observation noise')
     parser.add_argument('--n-envs', type=int, default=1,
                         help='Number of parallel Gazebo environments (requires gazebo_rl_env.launch)')
-    
+    parser.add_argument('--isolated', action='store_true',
+                        help='Port-shifted isolation: each env has its own ROS master and gzserver. '
+                             'Use with launch_isolated_training.sh. '
+                             'Ports: ROS=11311+i, Gazebo=11345+i')
+
     args = parser.parse_args()
     
     # Create directories
@@ -425,16 +447,32 @@ def main():
 
         # Create environment(s)
         if args.n_envs > 1:
-            rospy.loginfo(f"Using {args.n_envs} parallel environments (SubprocVecEnv)")
-            def make_env(env_id):
-                def _init():
-                    return Monitor(GazeboRLEnv(env_id=env_id, noisy=args.noisy))
-                return _init
+            if args.isolated:
+                rospy.loginfo(f"Using {args.n_envs} ISOLATED environments "
+                              f"(SubprocVecEnv, separate ROS masters on ports "
+                              f"{11311}–{11311 + args.n_envs - 1})")
+                def make_env(env_id):
+                    def _init():
+                        # Each forked child sets its own ROS/Gazebo master BEFORE rospy.init_node.
+                        # Use env_id=0 so topics match the launch file namespace (chaser_drone_0).
+                        # No conflict because each instance has its own isolated ROS master.
+                        os.environ['ROS_MASTER_URI']    = f'http://localhost:{11311 + env_id}'
+                        os.environ['GAZEBO_MASTER_URI'] = f'http://localhost:{11345 + env_id}'
+                        return Monitor(GazeboRLEnv(env_id=0, noisy=args.noisy))
+                    return _init
+            else:
+                rospy.loginfo(f"Using {args.n_envs} shared-world environments (SubprocVecEnv)")
+                def make_env(env_id):
+                    def _init():
+                        return Monitor(GazeboRLEnv(env_id=env_id, noisy=args.noisy))
+                    return _init
+
             env = SubprocVecEnv([make_env(i) for i in range(args.n_envs)],
                                 start_method='fork')
-            # Parent process needs a ROS node so CurriculumCallback can call
-            # rospy.get_param / rospy.set_param (subprocess envs have their own nodes).
-            rospy.init_node('trainer', anonymous=True)
+            if not args.isolated:
+                # Shared-master mode: parent needs a node so CurriculumCallback can
+                # call rospy.get_param / rospy.set_param on the shared master.
+                rospy.init_node('trainer', anonymous=True)
         else:
             env = Monitor(GazeboRLEnv(noisy=args.noisy))
 
@@ -496,12 +534,17 @@ def main():
 
         # Curriculum: shrink success radius as agent improves.
         # Edit this schedule to taste — (timestep, threshold_metres).
-        curriculum_callback = CurriculumCallback(schedule=[
-            (0,       2.0),   # start easy
-            (30_000,  1.0),
-            (80_000,  0.5),
-            (150_000, 0.3),   # final goal
-        ])
+        isolated_ports = (list(range(11311, 11311 + args.n_envs))
+                          if args.isolated else None)
+        curriculum_callback = CurriculumCallback(
+            schedule=[
+                (0,       2.0),   # start easy
+                (30_000,  1.0),
+                (80_000,  0.5),
+                (150_000, 0.3),   # final goal
+            ],
+            isolated_ports=isolated_ports,
+        )
 
         # Train
         model.learn(
