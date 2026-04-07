@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 
 from geometry_msgs.msg import Vector3
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Bool
 from viri.msg import RLAction
 
 from stable_baselines3 import PPO, SAC, TD3
@@ -50,11 +50,15 @@ class GazeboRLEnv(gym.Env):
         self.obs_sub = rospy.Subscriber('/chaser_drone/rl_observation', Vector3, self.obs_callback)
         self.vel_sub = rospy.Subscriber('/chaser_drone/rl_relative_velocity', Vector3, self.vel_callback)
         self.reward_sub = rospy.Subscriber('/chaser_drone/rl_reward', Float32, self.reward_callback)
+        self.done_sub = rospy.Subscriber('/chaser_drone/rl_episode_done', Bool, self.done_callback)
+        self.crash_sub = rospy.Subscriber('/chaser_drone/rl_crashed', Bool, self.crash_callback)
         
         # State buffers
         self.rel_pos = np.zeros(3, dtype=np.float32)
         self.rel_vel = np.zeros(3, dtype=np.float32)
         self.last_reward = 0.0
+        self.episode_done = False  # Episode termination signal
+        self.crashed = False  # Crash/flip flag
         
         self.episode_step = 0
         self.max_steps = int(30.0 * 50.0)  # 30 seconds at 50 Hz
@@ -76,6 +80,14 @@ class GazeboRLEnv(gym.Env):
         """Callback for reward signal"""
         self.last_reward = msg.data
     
+    def done_callback(self, msg):
+        """Callback for episode done signal (crash or flip)"""
+        self.episode_done = msg.data
+    
+    def crash_callback(self, msg):
+        """Callback for crash/flip indicator"""
+        self.crashed = msg.data
+    
     def reset(self, seed=None, options=None):
         """Reset environment"""
         super().reset(seed=seed)
@@ -84,6 +96,8 @@ class GazeboRLEnv(gym.Env):
         self.rel_pos = np.zeros(3, dtype=np.float32)
         self.rel_vel = np.zeros(3, dtype=np.float32)
         self.last_reward = 0.0
+        self.episode_done = False  # Reset episode done flag
+        self.crashed = False  # Reset crash flag
         
         # Return observation
         obs = self._get_observation()
@@ -110,12 +124,23 @@ class GazeboRLEnv(gym.Env):
         reward = float(self.last_reward)
         
         self.episode_step += 1
-        done = self.episode_step >= self.max_steps or np.linalg.norm(self.rel_pos) > 100.0
+        
+        # Episode ends if:
+        # 1. Max steps reached
+        # 2. Drone went too far away
+        # 3. Crash or flip detected
+        done = self.episode_done or self.episode_step >= self.max_steps or np.linalg.norm(self.rel_pos) > 100.0
         truncated = self.episode_step >= self.max_steps
+        
+        # Log crash/flip events
+        if self.crashed:
+            rospy.logwarn(f"Episode terminated: Crash/Flip detected! Reward penalty: {reward}")
         
         info = {
             'rel_pos_norm': np.linalg.norm(self.rel_pos),
-            'rel_vel_norm': np.linalg.norm(self.rel_vel)
+            'rel_vel_norm': np.linalg.norm(self.rel_vel),
+            'crashed': self.crashed,
+            'episode_done': self.episode_done
         }
         
         return obs, reward, done, truncated, info

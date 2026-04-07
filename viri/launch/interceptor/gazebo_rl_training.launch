@@ -10,7 +10,8 @@
   <arg name="paused" value="false"/>
   <arg name="debug" default="false"/>
   <arg name="verbose" default="false"/>
-  
+  <arg name="gui" default="true"/>
+
   <arg name="enable_ground_truth" default="true"/>
   <arg name="enable_command_feedthrough" default="true"/>
   <arg name="enable_logging" default="false"/>
@@ -25,7 +26,7 @@
   <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models:$(arg custom_models)"/>
   <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models"/>
   
-  <arg name="enable_test_action_publisher" default="true"/>
+  <arg name="enable_test_action_publisher" default="false"/>
 
   <!-- Launch Gazebo without GUI for faster simulation -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
