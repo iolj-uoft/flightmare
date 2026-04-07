@@ -18,6 +18,7 @@ from pathlib import Path
 from geometry_msgs.msg import Vector3
 from std_msgs.msg import Float32, Bool
 from viri.msg import RLAction, RLObservation
+from gazebo_msgs.srv import GetPhysicsProperties, SetPhysicsProperties
 
 from stable_baselines3 import PPO, SAC, TD3
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -70,8 +71,26 @@ class GazeboRLEnv(gym.Env):
         self.max_steps = int(30.0 * 50.0)  # 30 seconds at 50 Hz
         self.noisy = noisy
         
-        # Wait for ROS to be ready
-        time.sleep(1)
+        # Wait for ROS and Gazebo to be ready
+        rospy.sleep(1)
+
+        # Remove Gazebo real-time cap so simulation runs as fast as CPU allows.
+        # use_sim_time=true is already set, so all rospy.sleep() calls remain correct.
+        try:
+            rospy.wait_for_service('/gazebo/get_physics_properties', timeout=5.0)
+            get_phys = rospy.ServiceProxy('/gazebo/get_physics_properties', GetPhysicsProperties)
+            set_phys = rospy.ServiceProxy('/gazebo/set_physics_properties', SetPhysicsProperties)
+            props = get_phys()
+            set_phys(
+                time_step=props.time_step,
+                max_update_rate=0.0,  # 0 = unconstrained, run as fast as possible
+                gravity=props.gravity,
+                ode_config=props.ode_config
+            )
+            rospy.loginfo("Gazebo physics: max_update_rate set to 0 (unconstrained)")
+        except Exception as e:
+            rospy.logwarn(f"Could not set Gazebo physics properties: {e}")
+
         rospy.loginfo("GazeboRLEnv initialized with 4D action space [roll, pitch, yaw_rate, thrust]")
     
     def obs_callback(self, msg):
