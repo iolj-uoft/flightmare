@@ -23,6 +23,27 @@
  * 5. Handles arming of the motor controller
  * 6. Detects crashes and flips, signals episode termination with penalties
  */
+
+/**
+ * Convert Euler angles (roll, pitch, yaw) to quaternion
+ */
+geometry_msgs::Quaternion eulerToQuaternion(double roll, double pitch, double yaw) {
+    // Using standard conversion formulas
+    double cy = cos(yaw * 0.5);
+    double sy = sin(yaw * 0.5);
+    double cp = cos(pitch * 0.5);
+    double sp = sin(pitch * 0.5);
+    double cr = cos(roll * 0.5);
+    double sr = sin(roll * 0.5);
+
+    geometry_msgs::Quaternion q;
+    q.w = cy * cp * cr + sy * sp * sr;
+    q.x = cy * cp * sr - sy * sp * cr;
+    q.y = sy * cp * sr + cy * sp * cr;
+    q.z = sy * cp * cr - cy * sp * sr;
+    return q;
+}
+
 class GazeboRLAgentNode {
 public:
     // Crash/flip detection thresholds
@@ -140,44 +161,45 @@ private:
         quadrotor_msgs::ControlCommand cmd;
         cmd.header.stamp = ros::Time::now();
         cmd.header.frame_id = "world";
-        cmd.control_mode = 2;  // BODY_RATES mode (direct rate control - simpler)
+        cmd.control_mode = 1;  // ATTITUDE mode (more stable than BODY_RATES)
         cmd.armed = true;
         
         // Scale actions to reasonable ranges
-        double roll_rad = roll * M_PI / 6.0;      // [-pi/6, pi/6] (±30 degrees max roll)
-        double pitch_rad = pitch * M_PI / 6.0;    // [-pi/6, pi/6] (±30 degrees max pitch)
-        double yaw_rate_rad = yaw_rate * M_PI;    // [-pi, pi] rad/s (yaw angular velocity)
+        double roll_cmd = roll * M_PI / 6.0;      // [-pi/6, pi/6] (±30 degrees max roll)
+        double pitch_cmd = pitch * M_PI / 6.0;    // [-pi/6, pi/6] (±30 degrees max pitch)
+        double yaw_rate_cmd = yaw_rate * M_PI / 2.0;    // [-pi/2, pi/2] rad/s (moderate yaw rate)
         
-        // In BODY_RATES mode, we command angular velocities (p, q, r) directly
-        // Use roll/pitch inputs as feedforward rates, scale conservatively
-        double roll_rate_cmd = roll * 1.0;        // [-1, 1] rad/s (roll rate)
-        double pitch_rate_cmd = pitch * 1.0;      // [-1, 1] rad/s (pitch rate)
+        // Integrate yaw rate to get desired yaw angle (0.02s is control period at 50Hz)
+        double dt = 0.02;
+        current_yaw_ += yaw_rate_cmd * dt;
         
-        // Set body rates
-        cmd.bodyrates.x = roll_rate_cmd;      // p (roll rate)
-        cmd.bodyrates.y = pitch_rate_cmd;     // q (pitch rate)
-        cmd.bodyrates.z = yaw_rate_rad;       // r (yaw rate)
+        // Normalize yaw to [-pi, pi]
+        while (current_yaw_ > M_PI) current_yaw_ -= 2.0 * M_PI;
+        while (current_yaw_ < -M_PI) current_yaw_ += 2.0 * M_PI;
         
-        // Orientation can be left at default (identity) for BODY_RATES mode
-        // The controller will try to maintain current attitude while applying rates
-        cmd.orientation.w = 1.0;  // Identity quaternion
-        cmd.orientation.x = 0.0;
-        cmd.orientation.y = 0.0;
-        cmd.orientation.z = 0.0;
+        // Convert desired attitude (roll, pitch, yaw) to quaternion
+        cmd.orientation = eulerToQuaternion(roll_cmd, pitch_cmd, current_yaw_);
+        
+        // In ATTITUDE mode, bodyrates are feed-forward terms from reference trajectory
+        // Set yaw rate for feedback control
+        cmd.bodyrates.x = 0.0;  // roll rate (0 = let attitude control handle it)
+        cmd.bodyrates.y = 0.0;  // pitch rate (0 = let attitude control handle it)
+        cmd.bodyrates.z = yaw_rate_cmd;  // yaw rate from action
+        cmd.bodyrates.z = yaw_rate_cmd;  // yaw rate from action
         
         // Thrust: collective_thrust is MASS-NORMALIZED
         // For hover: collective_thrust = gravity = 9.81 m/s^2
         // To climb/descend: add/subtract from gravity
-        // The rpg_rotors_interface internally multiplies by mass to get actual motor thrust
         double gravity = 9.81;  // m/s^2
-        double max_accel = 5.0;  // m/s^2 (safe limit)
+        double max_accel = 3.0;  // m/s^2 (reduced for stability)
         
-        // Normalize thrust input from [-1, 1] to [-5, +5] m/s^2 then add gravity
-        cmd.collective_thrust = gravity + (thrust * max_accel);
+        // Clamp thrust to reasonable range [0.5*g, 1.5*g]
+        double thrust_normalized = gravity + (thrust * max_accel);
+        cmd.collective_thrust = std::max(gravity * 0.5, std::min(gravity * 1.5, thrust_normalized));
         
-        ROS_INFO_THROTTLE(0.5, "[Control BODY_RATES] p=%.2f q=%.2f r=%.2f rad/s thrust=%.2f m/s²(hover=%.2f)",
-                          roll_rate_cmd, pitch_rate_cmd, yaw_rate_rad,
-                          cmd.collective_thrust, gravity);
+        ROS_INFO_THROTTLE(0.5, "[Control ATTITUDE] roll=%.2f° pitch=%.2f° yaw=%.2f° thrust=%.2f m/s²",
+                          roll_cmd * 180.0 / M_PI, pitch_cmd * 180.0 / M_PI, 
+                          current_yaw_ * 180.0 / M_PI, cmd.collective_thrust);
         
         control_pub_.publish(cmd);
         
@@ -492,6 +514,7 @@ private:
     bool armed_;
     bool episode_done_ = false;  // Track if episode should terminate
     ros::Time crash_detection_disabled_until_;  // Time until crash detection is re-enabled
+    double current_yaw_ = 0.0;  // Current yaw angle for attitude control
     
     std::mutex odom_mutex_;
     std::mutex action_mutex_;
