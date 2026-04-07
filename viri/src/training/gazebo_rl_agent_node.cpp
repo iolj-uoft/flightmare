@@ -14,6 +14,7 @@
 #include <cmath>
 #include <thread>
 #include <chrono>
+#include <random>
 
 /**
  * ROS Node that:
@@ -60,10 +61,10 @@ public:
     static constexpr double CRASH_HEIGHT_THRESHOLD = 0.1;  // meters
     static constexpr double FLIP_ANGLE_THRESHOLD_DEG = 60.0;  // degrees
     static constexpr double FLIP_ANGLE_THRESHOLD_RAD = FLIP_ANGLE_THRESHOLD_DEG * M_PI / 180.0;
-    static constexpr double CRASH_PENALTY = -100.0;  // Large negative reward
+    static constexpr double CRASH_PENALTY = -4.0;  // Large negative reward
     static constexpr double FLIP_PENALTY = -50.0;    // Medium penalty for flipping
     static constexpr double RESET_DELAY = 0.1;  // seconds to wait before episode reset
-    static constexpr double CRASH_DETECTION_DISABLED_TIME = 2.0;  // seconds after reset to disable crash detection
+    static constexpr double CRASH_DETECTION_DISABLED_TIME = 1.0;  // seconds after reset to disable crash detection
 public:
     GazeboRLAgentNode(const ros::NodeHandle& nh) : nh_(nh), armed_(false) {
         // Per-env configurable params (defaults match single-env gazebo_rl_training.launch).
@@ -427,20 +428,20 @@ private:
             ROS_WARN("FLIP DETECTED! -> Publishing reward: %.2f", reward);
             publishEpisodeDone(true, 2);  // 2 = flipped
         } else if (target_reached) {
-            // Target reached within 30cm: large bonus and end episode
-            reward = 100.0;  // Large reward for successfully intercepting target
+            // Target reached: large bonus and end episode
+            reward = 10.0;  // Large reward for successfully intercepting target
             episode_done_ = true;
             cached_terminal_reward_ = reward;  // Cache for future calls
             ROS_INFO("🎯 TARGET REACHED! Distance: %.3f m - Episode successful!", pos_error);
             publishEpisodeDone(true, 4);  // 4 = target reached
         } else if (too_far) {
-            reward = -20.0;
+            reward = -4.0;
             episode_done_ = true;
             cached_terminal_reward_ = reward;
             ROS_WARN("DISTANCE EXCEEDED 50m! Ending episode.");
             publishEpisodeDone(true, 3);  // 3 = too far
         } else if (too_high) {
-            reward = -20.0;
+            reward = -4.0;
             episode_done_ = true;
             cached_terminal_reward_ = reward;
             ROS_WARN("ALTITUDE EXCEEDED target+10m! (chaser=%.1fm, target=%.1fm) Ending episode.",
@@ -471,7 +472,7 @@ private:
             }
 
             // 4. LIVING PENALTY (prevents safe-hover exploitation)
-            double living_penalty = -0.1;
+            double living_penalty = -0.001;
 
             reward = distance_reward + velocity_reward + yaw_reward + living_penalty;
         }
@@ -617,10 +618,11 @@ private:
         reset_msg.request.model_state.model_name = chaser_model_name_;
         reset_msg.request.model_state.reference_frame = "world";
 
-        // Set initial position (0.5m above ground to avoid immediate ground contact)
-        reset_msg.request.model_state.pose.position.x = 0.0;
-        reset_msg.request.model_state.pose.position.y = reset_y_offset_;
-        reset_msg.request.model_state.pose.position.z = 0.5;
+        // Spawn on the ground with uniform random offset in x/y (±3 m) for training diversity
+        std::uniform_real_distribution<double> spawn_dist(-3.0, 3.0);
+        reset_msg.request.model_state.pose.position.x = spawn_dist(rng_);
+        reset_msg.request.model_state.pose.position.y = reset_y_offset_ + spawn_dist(rng_);
+        reset_msg.request.model_state.pose.position.z = 0.0;
 
         // Set level orientation (identity quaternion)
         reset_msg.request.model_state.pose.orientation.w = 1.0;
@@ -638,7 +640,9 @@ private:
 
         // Call Gazebo service
         if (gazebo_set_model_state_client_.call(reset_msg)) {
-            ROS_INFO("Episode reset successful! Chaser drone respawned at (0, 0, 0.5m).");
+            ROS_INFO("Episode reset: chaser at (%.1f, %.1f, 0.0).",
+                     reset_msg.request.model_state.pose.position.x,
+                     reset_msg.request.model_state.pose.position.y);
 
             // Disable crash detection for 2 seconds to allow propellers to produce lift
             crash_detection_disabled_until_ = ros::Time::now() + ros::Duration(CRASH_DETECTION_DISABLED_TIME);
@@ -693,6 +697,8 @@ private:
     std::string target_model_name_;
     double reset_y_offset_;
     ros::Time target_reset_cooldown_;
+
+    std::mt19937 rng_{std::random_device{}()};
 
     std::mutex odom_mutex_;
     std::mutex action_mutex_;
