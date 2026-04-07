@@ -383,7 +383,10 @@ private:
         // Check if drone is too far away
         double pos_error = rel_pos.norm();
         bool too_far = (pos_error > 50.0);
-        
+
+        // Check if drone has risen too high above the target (degenerate upward escape behavior)
+        bool too_high = (chaser_pos(2) - target_pos(2) > 10.0);
+
         // Check if chaser is within 30cm of target (success condition)
         bool target_reached = (pos_error < 0.3);
         
@@ -412,42 +415,46 @@ private:
             ROS_INFO("🎯 TARGET REACHED! Distance: %.3f m - Episode successful!", pos_error);
             publishEpisodeDone(true, 4);  // 4 = target reached
         } else if (too_far) {
-            // Too far: penalty and end episode
-            reward = -50.0;  // Explicitly set penalty for exceeding distance limit
+            reward = -20.0;
             episode_done_ = true;
-            cached_terminal_reward_ = reward;  // Cache for future calls
+            cached_terminal_reward_ = reward;
             ROS_WARN("DISTANCE EXCEEDED 50m! Ending episode.");
             publishEpisodeDone(true, 3);  // 3 = too far
+        } else if (too_high) {
+            reward = -20.0;
+            episode_done_ = true;
+            cached_terminal_reward_ = reward;
+            ROS_WARN("ALTITUDE EXCEEDED target+10m! (chaser=%.1fm, target=%.1fm) Ending episode.",
+                     chaser_pos(2), target_pos(2));
+            publishEpisodeDone(true, 5);  // 5 = too high
         } else {
-            // Normal reward function: negative distance, bonus for proximity, yaw alignment reward
-            double vel_error = rel_vel.norm();
-            
-            // Base reward: negative distance and velocity error
-            reward = -0.1 * pos_error - 0.01 * vel_error;
-            
-            // Yaw alignment reward: encourage chaser to face target
-            // Compute direction to target in horizontal plane
-            double target_bearing = std::atan2(rel_pos(1), rel_pos(0));
-            
-            // Extract chaser yaw from quaternion
-            double chaser_w = chaser_odom_.pose.pose.orientation.w;
-            double chaser_z = chaser_odom_.pose.pose.orientation.z;
-            double chaser_yaw = 2.0 * std::atan2(chaser_z, chaser_w);
-            
-            // Compute yaw error (smallest angle difference)
-            double yaw_error = std::abs(target_bearing - chaser_yaw);
-            if (yaw_error > M_PI) {
-                yaw_error = 2.0 * M_PI - yaw_error;
+            // 1. EXPONENTIAL DISTANCE REWARD (funnel toward target)
+            // Bounded [0, 5.0]: never generates large deficits regardless of distance.
+            // k=0.15: reward ~2.4 at 5m, ~0.25 at 15m, ~0.03 at 25m.
+            double distance_reward = 5.0 * std::exp(-0.15 * pos_error);
+
+            // 2. CLOSING SPEED REWARD
+            // d/dt(||rel_pos||) = dot(rel_pos, rel_vel) / ||rel_pos||
+            // Negative value = drones getting closer → negate so approaching yields positive reward.
+            double closing_speed = rel_pos.dot(rel_vel) / (pos_error + 1e-6);
+            double velocity_reward = std::max(-2.0, std::min(2.0, -0.5 * closing_speed));
+
+            // 3. YAW ALIGNMENT (only relevant when already close)
+            double yaw_reward = 0.0;
+            if (pos_error < 10.0) {
+                double target_bearing = std::atan2(rel_pos(1), rel_pos(0));
+                double chaser_w = chaser_odom_.pose.pose.orientation.w;
+                double chaser_z = chaser_odom_.pose.pose.orientation.z;
+                double chaser_yaw = 2.0 * std::atan2(chaser_z, chaser_w);
+                double yaw_error = std::abs(target_bearing - chaser_yaw);
+                if (yaw_error > M_PI) yaw_error = 2.0 * M_PI - yaw_error;
+                yaw_reward = 0.5 * (1.0 - yaw_error / M_PI);
             }
-            
-            // Add small reward for good yaw alignment (when close to target)
-            if (pos_error < 50.0) {  // Only apply when reasonably close
-                reward += 0.5 * (1.0 - yaw_error / M_PI);  // Reward decreases with yaw error
-            }
-            
-            if (pos_error < 1.0) {
-                reward += 10.0;  // Bonus for being very close
-            }
+
+            // 4. LIVING PENALTY (prevents safe-hover exploitation)
+            double living_penalty = -0.1;
+
+            reward = distance_reward + velocity_reward + yaw_reward + living_penalty;
         }
         
         // DEBUG: Log reward value before publishing
