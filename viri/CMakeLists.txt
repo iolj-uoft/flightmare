@@ -77,6 +77,9 @@ add_executable(gazebo_rl_agent_node src/training/gazebo_rl_agent_node.cpp)
 add_dependencies(gazebo_rl_agent_node ${PROJECT_NAME}_generate_messages_cpp)
 target_link_libraries(gazebo_rl_agent_node ${catkin_LIBRARIES} Eigen3::Eigen stdc++fs)
 
+add_executable(pn_guidance_node src/pn_guidance/pn_guidance_node.cpp)
+target_link_libraries(pn_guidance_node ${catkin_LIBRARIES} Eigen3::Eigen)
+
 add_executable(state_monitor_node src/training/state_monitor_node.cpp)
 add_dependencies(state_monitor_node ${PROJECT_NAME}_generate_messages_cpp)
 target_link_libraries(state_monitor_node ${catkin_LIBRARIES} stdc++fs)

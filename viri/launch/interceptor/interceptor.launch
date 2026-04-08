@@ -16,6 +16,8 @@
   <arg name="use_mpc" default="false"/>
   <arg name="enable_ground_truth" default="true"/>
   <arg name="enable_command_feedthrough" default="false"/>
+  <!-- Set autonomous:=true to disable joystick, manual_flight_assistant, and rqt_gui -->
+  <arg name="autonomous" default="false"/>
   <arg name="enable_logging" default="false"/>
   <arg name="log_file" default="$(arg mav_name)"/>
   <arg name="custom_models" default=""/>
@@ -45,7 +47,7 @@
       <arg name="enable_logging" value="false" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg target_name)"/>
-      <arg name="x" value="4.0" /> 
+      <arg name="x" value="10.0" /> 
       <arg name="y" value="0.0" />
       <arg name="z" value="0.0" />
     </include>
@@ -142,17 +144,17 @@
     <node pkg="viri" type="ekf_estimation_node" name="relative_ekf_node" output="screen">
     </node>
 
-    <node pkg="joy" type="joy_node" name="joy_node">
+    <node pkg="joy" type="joy_node" name="joy_node" unless="$(arg autonomous)">
       <param name="autorepeat_rate" value="10"/>
     </node>
 
-    <node pkg="manual_flight_assistant" type="manual_flight_assistant" name="manual_flight_assistant" output="screen">
+    <node pkg="manual_flight_assistant" type="manual_flight_assistant" name="manual_flight_assistant" output="screen" unless="$(arg autonomous)">
       <rosparam file="$(find rpg_rotors_interface)/parameters/manual_flight_assistant.yaml"/>
       <param name="vmax_xy" value="3.0" />
       <param name="vmax_z" value="1.0" />
       <param name="rmax_yaw" value="2.0" />
     </node>
-    <node name="rqt_quad_gui" pkg="rqt_gui" type="rqt_gui" args="-s rqt_quad_gui.basic_flight.BasicFlight --args --quad_name $(arg quad_name)" output="screen"/>
+    <node name="rqt_quad_gui" pkg="rqt_gui" type="rqt_gui" args="-s rqt_quad_gui.basic_flight.BasicFlight --args --quad_name $(arg quad_name)" output="screen" unless="$(arg autonomous)"/>
   </group>
 
   <!-- tf args: x y z yaw pitch roll -->

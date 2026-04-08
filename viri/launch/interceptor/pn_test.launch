@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<!--
+  Proportional Navigation test launch.
+  Spawns Gazebo + one chaser/target drone pair + pn_guidance_node.
+  No RL agent — the PN controller drives the chaser directly.
+
+  Usage:
+    roslaunch viri pn_test.launch gui:=true
+    roslaunch viri pn_test.launch gui:=false   # headless (faster)
+
+  Tuning params (pass on command line):
+    N   — navigation constant (default 4.0, tune 3–5)
+    Kp  — forward speed P-gain (default 1.5)
+    Vd  — desired closing speed m/s (default 5.0)
+
+  Example:
+    roslaunch viri pn_test.launch gui:=true N:=3.0 Vd:=4.0
+-->
+<launch>
+  <arg name="gui" default="false"/>
+  <arg name="N"   default="4.0"/>
+  <arg name="Kp"  default="1.5"/>
+  <arg name="Vd"  default="5.0"/>
+
+  <!-- Gazebo world (headless by default) -->
+  <include file="$(find viri)/launch/interceptor/gazebo_base.launch">
+    <arg name="gui" value="$(arg gui)"/>
+  </include>
+
+  <!-- Spawn target_drone_0 only (with its own autopilot for hovering) -->
+  <group ns="target_drone_0">
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name"            value="hummingbird"/>
+      <arg name="namespace"           value="target_drone_0"/>
+      <arg name="model"               value="$(find rotors_description)/urdf/mav_generic_odometry_sensor.gazebo"/>
+      <arg name="enable_logging"      value="false"/>
+      <arg name="enable_ground_truth" value="true"/>
+      <arg name="x" value="10.0"/>
+      <arg name="y" value="0.0"/>
+      <arg name="z" value="1.0"/>
+    </include>
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface"
+          name="rpg_rotors_interface" output="log">
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml"/>
+      <remap from="odometry"                 to="ground_truth/odometry"/>
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm"/>
+    </node>
+    <node pkg="autopilot" type="autopilot" name="autopilot" output="log">
+      <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml"/>
+      <param name="velocity_estimate_in_world_frame" value="false"/>
+      <param name="state_estimate_timeout"           value="0.1"/>
+      <remap from="autopilot/state_estimate" to="ground_truth/odometry"/>
+    </node>
+  </group>
+  <node pkg="viri" type="target_manager.py" name="target_manager_0" output="log">
+    <param name="target_name" value="target_drone_0"/>
+  </node>
+
+  <!-- Spawn chaser_drone_0 with autopilot — PN will use command feedthrough -->
+  <group ns="chaser_drone_0">
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name"            value="hummingbird"/>
+      <arg name="namespace"           value="chaser_drone_0"/>
+      <arg name="model"               value="$(find rotors_description)/urdf/mav_generic_odometry_sensor.gazebo"/>
+      <arg name="enable_logging"      value="false"/>
+      <arg name="enable_ground_truth" value="true"/>
+      <arg name="x" value="0.0"/>
+      <arg name="y" value="0.0"/>
+      <arg name="z" value="0.5"/>
+    </include>
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface"
+          name="rpg_rotors_interface" output="log">
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml"/>
+      <remap from="odometry"                 to="ground_truth/odometry"/>
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm"/>
+    </node>
+    <node pkg="autopilot" type="autopilot" name="autopilot" output="log">
+      <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml"/>
+      <param name="velocity_estimate_in_world_frame" value="false"/>
+      <param name="state_estimate_timeout"           value="0.1"/>
+      <param name="enable_command_feedthrough"       value="true"/>
+      <param name="control_command_input_timeout"    value="0.15"/>
+      <remap from="autopilot/state_estimate" to="ground_truth/odometry"/>
+    </node>
+  </group>
+
+  <!-- PN guidance node — waits for autopilot HOVER, then uses command feedthrough -->
+  <node pkg="viri" type="pn_guidance_node" name="pn_guidance_node" output="screen">
+    <param name="chaser_odom_topic"     value="/chaser_drone_0/ground_truth/odometry"/>
+    <param name="target_odom_topic"     value="/target_drone_0/ground_truth/odometry"/>
+    <param name="control_topic"         value="/chaser_drone_0/autopilot/control_command_input"/>
+    <param name="autopilot_start_topic" value="/chaser_drone_0/autopilot/start"/>
+    <param name="autopilot_off_topic"   value="/chaser_drone_0/autopilot/off"/>
+    <param name="autopilot_fb_topic"    value="/chaser_drone_0/autopilot/feedback"/>
+    <param name="arm_topic"             value="/chaser_drone_0/bridge/arm"/>
+    <param name="chaser_model_name"     value="chaser_drone_0"/>
+    <param name="N"                     value="$(arg N)"/>
+    <param name="Kp"                    value="$(arg Kp)"/>
+    <param name="Vd"                    value="$(arg Vd)"/>
+  </node>
+</launch>

@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!--
+  Autonomous PN interceptor using stereo camera + EKF relative state.
+
+  Pipeline:
+    Stereo cameras → YOLO detection → stereo triangulation
+    → relative_eskf_node (/chaser_drone/filtered_relative_state)
+    → pn_guidance_node (EKF mode) → autopilot command feedthrough
+
+  Usage:
+    roslaunch viri pn_interceptor.launch gui:=true
+    roslaunch viri pn_interceptor.launch gui:=true N:=3.0 Vd:=4.0
+-->
+<launch>
+  <arg name="gui" default="false"/>
+  <arg name="N"   default="4.0"/>
+  <arg name="Kp"  default="1.5"/>
+  <arg name="Vd"  default="5.0"/>
+
+  <!-- Full stereo + EKF pipeline with command feedthrough enabled on chaser autopilot -->
+  <include file="$(find viri)/launch/interceptor/interceptor.launch">
+    <arg name="enable_command_feedthrough" value="true"/>
+    <arg name="autonomous"                 value="true"/>
+  </include>
+
+  <!-- PN guidance node in EKF mode -->
+  <node pkg="viri" type="pn_guidance_node" name="pn_guidance_node" output="screen">
+    <param name="use_ekf"                       value="true"/>
+    <!-- EKF relative state: r in GA frame, v_target in GA frame -->
+    <param name="filtered_relative_state_topic" value="/chaser_drone/filtered_relative_state"/>
+    <!-- Noisy odometry: chaser orientation + body-frame velocity for v_rel computation -->
+    <!-- <param name="chaser_odom_topic"             value="/chaser_drone/noisy_odometry"/> -->
+    <param name="chaser_odom_topic"             value="/chaser_drone/ground_truth/odometry"/>
+    <!-- Autopilot interface -->
+    <param name="control_topic"                 value="/chaser_drone/autopilot/control_command_input"/>
+    <param name="autopilot_start_topic"         value="/chaser_drone/autopilot/start"/>
+    <param name="autopilot_off_topic"           value="/chaser_drone/autopilot/off"/>
+    <param name="autopilot_fb_topic"            value="/chaser_drone/autopilot/feedback"/>
+    <param name="arm_topic"                     value="/chaser_drone/bridge/arm"/>
+    <param name="chaser_model_name"             value="chaser_drone"/>
+    <!-- PN tuning -->
+    <param name="N"                             value="$(arg N)"/>
+    <param name="Kp"                            value="$(arg Kp)"/>
+    <param name="Vd"                            value="$(arg Vd)"/>
+  </node>
+</launch>
