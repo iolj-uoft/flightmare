@@ -27,7 +27,7 @@ DepthEstimator::DepthEstimator(const ros::NodeHandle& nh, const ros::NodeHandle&
 // Update the callback argument to take the new message type
 void DepthEstimator::bboxCallback(const vision_msgs::Detection2DArray::ConstPtr& msg) {
     if (msg->detections.empty()) {
-        return; // No target detected, let EKF coast
+        return; // No target detected, let LTVKF coast
     }
 
     // Extract the first detection's bounding box

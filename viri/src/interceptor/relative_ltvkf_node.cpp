@@ -13,7 +13,7 @@
 #include <memory>
 #include <deque>
 
-class RelativeEKF {
+class RelativeLTVKF {
 private:
     ros::NodeHandle nh_;
     ros::Subscriber odom_sub_;
@@ -52,7 +52,7 @@ private:
     const size_t MAX_HISTORY_SIZE = 100; // Stores up to 1 second of data at 100 Hz
     
 public:
-    RelativeEKF(ros::NodeHandle& nh) : nh_(nh), is_initialized_(false), tf_buffer_(ros::Duration(10.0)) {
+    RelativeLTVKF(ros::NodeHandle& nh) : nh_(nh), is_initialized_(false), tf_buffer_(ros::Duration(10.0)) {
         // 1. Initialize Matrices
         x_ = Eigen::VectorXd::Zero(6);
         
@@ -70,15 +70,15 @@ public:
         latest_q_.x = 0.0; latest_q_.y = 0.0; latest_q_.z = 0.0; latest_q_.w = 1.0;
 
         // 2. Setup ROS Plumbing
-        odom_sub_ = nh_.subscribe("noisy_odometry", 1, &RelativeEKF::predictionCallback, this);
-        yolo_sub_ = nh_.subscribe("/target_position_relative", 1, &RelativeEKF::updateCallback, this);
+        odom_sub_ = nh_.subscribe("noisy_odometry", 1, &RelativeLTVKF::predictionCallback, this);
+        yolo_sub_ = nh_.subscribe("/target_position_relative", 1, &RelativeLTVKF::updateCallback, this);
 
         tf_listener_.reset(new tf2_ros::TransformListener(tf_buffer_));
         
         filtered_state_pub_ = nh_.advertise<nav_msgs::Odometry>("filtered_relative_state", 10);
         filtered_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("filtered_target_position", 10);
 
-        ROS_INFO("Robust GA-Frame Relative EKF Initialized. Waiting for YOLO...");
+        ROS_INFO("Robust GA-Frame Relative LTVKF Initialized. Waiting for YOLO...");
     }
 
     Eigen::Matrix3d skew(const Eigen::Vector3d& v) {
@@ -258,7 +258,7 @@ public:
 
         Eigen::Matrix3d R_dynamic_cov = computeDynamicCovariance(z_body);
 
-        // 2. Derotate measurement into GA Frame BEFORE the EKF sees it
+        // 2. Derotate measurement into GA Frame BEFORE the LTVKF sees it
         // (Uses the latest orientation. For a 50ms delay, this approximation is usually fine)
         Eigen::Matrix3d R_derotate = getDerotationMatrix(latest_q_);
         Eigen::Matrix3d R_noise_ga = R_derotate * R_dynamic_cov * R_derotate.transpose();
@@ -269,7 +269,7 @@ public:
             x_(0) = z_ga(0); x_(1) = z_ga(1); x_(2) = z_ga(2);
             last_odom_time_ = pt_body.header.stamp;
             is_initialized_ = true;
-            ROS_INFO("EKF Initialized directly in the GA Frame.");
+            ROS_INFO("LTVKF Initialized directly in the GA Frame.");
             return;
         }
 
@@ -295,7 +295,7 @@ public:
         Eigen::VectorXd x_delayed = it->x;
         Eigen::MatrixXd P_delayed = it->P;
 
-        // 4. EKF UPDATE (Comparing past GA observation to past GA prediction)
+        // 4. LTVKF UPDATE (Comparing past GA observation to past GA prediction)
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, 6);
         H.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
 
@@ -386,9 +386,9 @@ public:
 };
 
 int main(int argc, char** argv) {
-    ros::init(argc, argv, "relative_ekf_node");
+    ros::init(argc, argv, "relative_ltvkf_node");
     ros::NodeHandle nh;
-    RelativeEKF ekf(nh);
+    RelativeLTVKF ltvkf(nh);
     ros::spin();
     return 0;
 }

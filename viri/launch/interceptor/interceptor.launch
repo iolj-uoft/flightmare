@@ -139,7 +139,7 @@
       <param name="pos_drift_std" value="0.005" />
     </node>
 
-    <node pkg="viri" type="ekf_estimation_node" name="relative_ekf_node" output="screen">
+    <node pkg="viri" type="ltvkf_estimation_node" name="relative_ltvkf_node" output="screen">
     </node>
 
     <node pkg="joy" type="joy_node" name="joy_node">
