@@ -1,5 +1,4 @@
 #include "viri/depth_estimation.hpp"
- // <-- Add this header
 #include <cmath>
 
 namespace viri {
