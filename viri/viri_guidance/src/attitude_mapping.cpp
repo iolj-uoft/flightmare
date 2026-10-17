@@ -5,19 +5,33 @@
 
 namespace viri_guidance {
 
+namespace {
+// Floor on the current body z-axis' vertical component when holding altitude under a tilt
+// clamp; keeps the division finite near 90 deg (thrust saturates at thrust_max anyway).
+constexpr double kMinThrustAxisZ = 0.1;
+}  // namespace
+
 AttitudeCommand mapAccelerationToAttitude(const Eigen::Vector3d& a_total_ga,
                                           const Eigen::Matrix3d& R_GB,
                                           const AttitudeLimits& limits) {
   AttitudeCommand cmd;
   const Eigen::Vector3d& a = a_total_ga;
 
-  cmd.pitch = std::atan2(a.x(), a.z());
-  cmd.roll = std::atan2(-a.y(), std::hypot(a.x(), a.z()));
-  cmd.roll = std::clamp(cmd.roll, -limits.max_tilt, limits.max_tilt);
-  cmd.pitch = std::clamp(cmd.pitch, -limits.max_tilt, limits.max_tilt);
+  const double pitch = std::atan2(a.x(), a.z());
+  const double roll = std::atan2(-a.y(), std::hypot(a.x(), a.z()));
+  cmd.roll = std::clamp(roll, -limits.max_tilt, limits.max_tilt);
+  cmd.pitch = std::clamp(pitch, -limits.max_tilt, limits.max_tilt);
+  const bool tilt_clamped = cmd.roll != roll || cmd.pitch != pitch;
 
   const Eigen::Vector3d z_body_current = R_GB.col(2);
-  cmd.thrust = std::clamp(a.dot(z_body_current), limits.thrust_min, limits.thrust_max);
+  double thrust = a.dot(z_body_current);
+  if (tilt_clamped) {
+    // The body axis can no longer follow a, so projecting a onto it over-delivers vertical
+    // thrust (T cos(tilt) > a_z whenever |a_xy| / a_z > tan(max_tilt)) and the vehicle climbs.
+    // Hold the requested vertical acceleration instead and give up the horizontal excess.
+    thrust = a.z() / std::max(z_body_current.z(), kMinThrustAxisZ);
+  }
+  cmd.thrust = std::clamp(thrust, limits.thrust_min, limits.thrust_max);
   return cmd;
 }
 

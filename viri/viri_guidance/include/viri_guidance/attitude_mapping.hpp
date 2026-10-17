@@ -27,7 +27,9 @@ struct AttitudeCommand {
  * The desired body z-axis is aligned with a_total while holding the current heading (yaw 0 in
  * GA). For R = Ry(pitch) Rx(roll):  z_B = [cos(roll) sin(pitch), -sin(roll), cos(roll) cos(pitch)].
  * Collective thrust is the projection of a_total onto the *current* body z-axis R_GB e_z, so
- * thrust does not over-inflate while the vehicle is still banking.
+ * thrust does not over-inflate while the vehicle is still banking. When roll or pitch hits
+ * max_tilt the projection would over-deliver vertical thrust (net climb), so thrust is instead
+ * a_z / z_B,current.z: the requested vertical acceleration is held and horizontal is sacrificed.
  */
 AttitudeCommand mapAccelerationToAttitude(const Eigen::Vector3d& a_total_ga,
                                           const Eigen::Matrix3d& R_GB,

@@ -39,7 +39,7 @@ add_executable(flightmare_renderer_node
   src/flightmare_renderer.cpp
   src/flightmare_renderer_node.cpp
 )
-target_link_libraries(flightmare_renderer_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs)
+target_link_libraries(flightmare_renderer_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} stdc++fs zmq zmqpp)
 
 # Odometry noise injection
 add_executable(odom_noise_injector_node src/odom_noise_injector_node.cpp)

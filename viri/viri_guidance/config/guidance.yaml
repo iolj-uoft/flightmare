@@ -29,7 +29,7 @@ k_yaw: 5.0
 auto_takeoff: true             # arm + autopilot/start once odometry is available
 takeoff_delay: 1.0             # [s] after first odometry
 auto_engage: true              # engage once the autopilot hovers and the LTVKF is initialized
-max_measurement_age: 1.0       # [s] without a stereo update -> stop commanding (autopilot hovers)
+max_measurement_age: 1.0       # [s] without a stereo update -> status STALE (keeps pursuing on the prediction)
 
 relative_state_topic: relative_state
 odometry_topic: noisy_odometry

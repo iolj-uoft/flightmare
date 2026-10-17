@@ -75,6 +75,31 @@ TEST(AttitudeMapping, ThrustProjectsOntoCurrentBodyZ) {
   EXPECT_NEAR(c.thrust, 12.0 * std::cos(30 * kDeg), 1e-12);
 }
 
+TEST(AttitudeMapping, TiltClampHoldsVerticalAcceleration) {
+  // 15 m/s^2 lateral wants ~57 deg of pitch; clamped to 40 deg. Plain projection would give
+  // 14 * cos(40) = 10.7 m/s^2 vertical (> g) and climb.
+  const Eigen::Vector3d a(15.0, 0.0, 9.81);
+  const Eigen::Matrix3d at_limit =
+      Eigen::AngleAxisd(40 * kDeg, Eigen::Vector3d::UnitY()).toRotationMatrix();
+  const AttitudeCommand c = mapAccelerationToAttitude(a, at_limit, {});
+  EXPECT_NEAR(c.pitch, 40 * kDeg, 1e-12);
+  EXPECT_NEAR(c.thrust * at_limit(2, 2), 9.81, 1e-9);
+
+  // Still banking (10 deg) toward the clamped attitude: vertical is held there too.
+  const Eigen::Matrix3d banking =
+      Eigen::AngleAxisd(10 * kDeg, Eigen::Vector3d::UnitY()).toRotationMatrix();
+  const AttitudeCommand b = mapAccelerationToAttitude(a, banking, {});
+  EXPECT_NEAR(b.thrust * banking(2, 2), 9.81, 1e-9);
+
+  // Combined roll + pitch clamp beyond what thrust_max can hold: saturate, never exceed.
+  const Eigen::Matrix3d steep = (Eigen::AngleAxisd(40 * kDeg, Eigen::Vector3d::UnitY()) *
+                                 Eigen::AngleAxisd(40 * kDeg, Eigen::Vector3d::UnitX()))
+                                    .toRotationMatrix();
+  const AttitudeCommand s = mapAccelerationToAttitude(Eigen::Vector3d(20, -20, 9.81), steep, {});
+  EXPECT_NEAR(s.thrust, 14.0, 1e-12);
+  EXPECT_LT(s.thrust * steep(2, 2), 9.81);
+}
+
 TEST(AttitudeMapping, BodyRatesDriveTowardDesired) {
   const Eigen::Quaterniond q = Eigen::Quaterniond::Identity();
   const Eigen::Quaterniond q_des = attitudeToQuaternion(0.2, -0.1, 0.0);

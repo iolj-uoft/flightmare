@@ -80,7 +80,7 @@ The node publishes `quadrotor_msgs/ControlCommand` on `autopilot/control_command
             auto_takeoff: arm + autopilot/start
 IDLE ──(autopilot HOVER ∧ LTVKF initialized ∧ auto_engage)──▶ ENGAGED ──▶ PRONAV / HEADING
   ▲                                                    │
-  │                         no stereo update > 1 s ────┴──▶ STALE (no output → autopilot hovers)
+  │                         no stereo update > 1 s ────┴──▶ STALE (coasts on LTVKF prediction)
   └── ~engage service                    /engagement/intercepted ──▶ INTERCEPTED (latched)
 ```
 

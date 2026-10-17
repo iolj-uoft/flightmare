@@ -19,6 +19,7 @@
   <exec_depend>rospy</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>quadrotor_msgs</exec_depend>
   <exec_depend>flightrender</exec_depend>
   <exec_depend>gazebo_ros</exec_depend>
   <exec_depend>rotors_gazebo</exec_depend>

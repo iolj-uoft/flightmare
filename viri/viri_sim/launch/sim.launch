@@ -4,7 +4,7 @@
 <launch>
   <arg name="chaser_name" default="chaser_drone"/>
   <arg name="target_name" default="target_drone"/>
-  <arg name="trajectory" default="hover"/>          <!-- hover | back_and_forth | figure_eight -->
+  <arg name="trajectory" default="hover"/>          <!-- hover | back_and_forth | figure_eight | wander -->
 
   <arg name="chaser_x" default="0.0"/>
   <arg name="chaser_y" default="0.0"/>
@@ -72,6 +72,7 @@
   </group>
 
   <node pkg="viri_sim" type="target_manager.py" name="target_manager" output="screen">
+    <rosparam file="$(find viri_sim)/config/target.yaml"/>
     <param name="target_name" value="$(arg target_name)"/>
     <param name="default_trajectory" value="$(arg trajectory)"/>
   </node>

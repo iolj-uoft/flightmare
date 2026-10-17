@@ -8,8 +8,9 @@
 //              ~status                   (viri_msgs/GuidanceStatus)
 // Services:    ~engage, ~disengage       (std_srvs/Trigger)
 //
-// When the node stops publishing (idle, stale estimate, intercept), the autopilot leaves
-// command feedthrough after its input timeout and holds hover.
+// When the node stops publishing (idle, intercept, disengage), the autopilot leaves command
+// feedthrough after its input timeout and holds hover. A stale estimate does not stop it:
+// pursuit coasts on the LTVKF prediction and the status reports STALE.
 
 #include <nav_msgs/Odometry.h>
 #include <quadrotor_msgs/AutopilotFeedback.h>
@@ -187,12 +188,13 @@ class GuidanceNode {
     }
 
     if (engaged_ && estimate_ready) {
+      // Without stereo updates the LTVKF keeps predicting at odometry rate (constant target
+      // velocity), so pursuit continues on that prediction rather than handing back to hover.
+      runGuidance(now, status);
       const double age = (now - state_->last_measurement_stamp).toSec();
       if (age > max_measurement_age_) {
         status.mode = viri_msgs::GuidanceStatus::STALE;
-        ROS_WARN_THROTTLE(1.0, "[guidance] No stereo update for %.2f s; holding (autopilot hover).", age);
-      } else {
-        runGuidance(now, status);
+        ROS_WARN_THROTTLE(1.0, "[guidance] No stereo update for %.2f s; coasting on prediction.", age);
       }
     }
 

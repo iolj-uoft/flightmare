@@ -1,0 +1,29 @@
+# Scripted target trajectories (target_manager.py). Velocity commands in world frame.
+ramp_time: 2.0                 # [s] smoothstep fade-in for the periodic trajectories
+
+# Peak ~3.7 m/s, ~2.6 m/s^2
+figure_eight_amplitude: 6.0    # [m]
+figure_eight_speed: 0.5        # [rad/s]
+
+# Peak 2.5 m/s, 1.6 m/s^2
+back_and_forth_amplitude: 4.0  # [m]
+back_and_forth_speed: 0.1      # oscillation frequency [Hz]
+
+# Smooth random cruise (non-cooperative drone)
+wander:
+  seed: 0                      # same seed -> same command sequence; change per run for variety
+  v_min: 2.0                   # [m/s] cruise speed is re-drawn in [v_min, v_max]
+  v_max: 5.0
+  a_tangential: 1.0            # [m/s^2] speed-change limit
+  max_accel: 4.9               # [m/s^2] total horizontal acceleration cap (0.5 g)
+  max_turn_rate_deg: 30.0      # [deg/s]
+  turn_std_deg: 15.0           # [deg/s] stationary std of the random turn rate
+  turn_tau: 2.0                # [s] turn-rate correlation time
+  redraw_min: 3.0              # [s] speed / altitude reference re-drawn every U(min, max)
+  redraw_max: 8.0
+  z_min: 1.0                   # [m] altitude band
+  z_max: 3.0
+  z_gain: 0.5                  # [1/s]
+  vz_max: 0.5                  # [m/s]
+  fence_radius: 25.0           # [m] around the take-off point; soft: overshoots up to ~5 m at v_max
+  fence_gain: 1.0              # [1/s] heading gain while returning

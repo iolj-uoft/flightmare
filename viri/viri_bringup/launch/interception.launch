@@ -5,7 +5,7 @@
      roslaunch viri_bringup interception.launch law:=hybrid trajectory:=figure_eight -->
 <launch>
   <arg name="law" default="hybrid"/>                <!-- hybrid | pronav -->
-  <arg name="trajectory" default="hover"/>          <!-- hover | back_and_forth | figure_eight -->
+  <arg name="trajectory" default="hover"/>          <!-- hover | back_and_forth | figure_eight | wander -->
   <arg name="auto_engage" default="true"/>
   <arg name="target_x" default="4.0"/>
   <arg name="target_y" default="0.0"/>
@@ -37,6 +37,7 @@
 
   <node pkg="viri_bringup" type="engagement_monitor.py" name="engagement_monitor" output="screen">
     <rosparam file="$(find viri_bringup)/config/engagement.yaml"/>
+    <param name="intercept_radius" value="0.3"/>
     <param name="log_dir" value="$(arg log_dir)"/>
     <param name="run_label" value="$(arg law)_$(arg trajectory)"/>
   </node>
