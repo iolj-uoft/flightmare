@@ -1,0 +1,8 @@
+# Ground-truth engagement monitor (intercept detection + logging)
+chaser_odometry_topic: /chaser_drone/ground_truth/odometry
+target_odometry_topic: /target_drone/ground_truth/odometry
+relative_state_topic: /chaser_drone/relative_state
+guidance_status_topic: /chaser_drone/guidance/status
+intercepted_topic: /engagement/intercepted
+intercept_radius: 1.0          # [m] centre-to-centre ground-truth distance
+log_rate: 50.0                 # [Hz] CSV row rate

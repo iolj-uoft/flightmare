@@ -1,0 +1,142 @@
+<?xml version="1.0"?>
+<!-- Gazebo + RotorS physics for both drones, RPG autopilots, Flightmare stereo rendering,
+     odometry noise and the scripted target trajectory. -->
+<launch>
+  <arg name="chaser_name" default="chaser_drone"/>
+  <arg name="target_name" default="target_drone"/>
+  <arg name="trajectory" default="hover"/>          <!-- hover | back_and_forth | figure_eight -->
+
+  <arg name="chaser_x" default="0.0"/>
+  <arg name="chaser_y" default="0.0"/>
+  <arg name="target_x" default="4.0"/>
+  <arg name="target_y" default="0.0"/>
+
+  <arg name="gui" default="true"/>                  <!-- Gazebo client -->
+  <arg name="rqt" default="false"/>                 <!-- rqt_quad_gui + joystick manual flight -->
+  <arg name="use_unity_editor" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="verbose" default="false"/>
+
+  <arg name="model" default="$(find rotors_description)/urdf/mav_generic_odometry_sensor.gazebo"/>
+  <arg name="world_name" default="$(find rotors_gazebo)/worlds/basic.world"/>
+
+  <param name="use_sim_time" value="true"/>
+  <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models"/>
+  <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_name)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="paused" value="false"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="verbose" value="$(arg verbose)"/>
+  </include>
+
+  <node pkg="flightrender" type="RPG_Flightmare.x86_64" name="rpg_flightmare_render"
+        unless="$(arg use_unity_editor)"/>
+
+  <!-- ================================================================ target -->
+  <group ns="$(arg target_name)">
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name" value="hummingbird"/>
+      <arg name="namespace" value="$(arg target_name)"/>
+      <arg name="model" value="$(arg model)"/>
+      <arg name="enable_logging" value="false"/>
+      <arg name="enable_ground_truth" value="true"/>
+      <arg name="log_file" value="$(arg target_name)"/>
+      <arg name="x" value="$(arg target_x)"/>
+      <arg name="y" value="$(arg target_y)"/>
+      <arg name="z" value="0.0"/>
+    </include>
+
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface" name="rpg_rotors_interface" output="screen">
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml"/>
+      <remap from="odometry" to="ground_truth/odometry"/>
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm"/>
+    </node>
+
+    <node pkg="autopilot" type="autopilot" name="autopilot" output="screen">
+      <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml"/>
+      <param name="kpxy" value="10.0"/>
+      <param name="kdxy" value="8.0"/>
+      <param name="kpz" value="12.0"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml"/>
+      <param name="position_controller/use_rate_mode" value="True"/>
+      <param name="velocity_estimate_in_world_frame" value="false"/>
+      <param name="state_estimate_timeout" value="0.1"/>
+      <param name="control_command_delay" value="0.01"/>
+      <param name="enable_command_feedthrough" value="false"/>
+      <remap from="autopilot/state_estimate" to="ground_truth/odometry"/>
+    </node>
+  </group>
+
+  <node pkg="viri_sim" type="target_manager.py" name="target_manager" output="screen">
+    <param name="target_name" value="$(arg target_name)"/>
+    <param name="default_trajectory" value="$(arg trajectory)"/>
+  </node>
+
+  <!-- ================================================================ chaser -->
+  <group ns="$(arg chaser_name)">
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name" value="hummingbird"/>
+      <arg name="namespace" value="$(arg chaser_name)"/>
+      <arg name="model" value="$(arg model)"/>
+      <arg name="enable_logging" value="false"/>
+      <arg name="enable_ground_truth" value="true"/>
+      <arg name="log_file" value="$(arg chaser_name)"/>
+      <arg name="x" value="$(arg chaser_x)"/>
+      <arg name="y" value="$(arg chaser_y)"/>
+    </include>
+
+    <node pkg="rpg_rotors_interface" type="rpg_rotors_interface" name="rpg_rotors_interface" output="screen">
+      <rosparam file="$(find rpg_rotors_interface)/parameters/rpg_rotors_interface.yaml"/>
+      <remap from="odometry" to="ground_truth/odometry"/>
+      <remap from="rpg_rotors_interface/arm" to="bridge/arm"/>
+    </node>
+
+    <!-- Guidance commands enter through autopilot/control_command_input (feedthrough). -->
+    <node pkg="autopilot" type="autopilot" name="autopilot" output="screen">
+      <rosparam file="$(find state_predictor)/parameters/hummingbird.yaml"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/position_controller.yaml"/>
+      <param name="kpxy" value="10.0"/>
+      <param name="kdxy" value="8.0"/>
+      <param name="kpz" value="12.0"/>
+      <rosparam file="$(find rpg_rotors_interface)/parameters/autopilot.yaml"/>
+      <param name="position_controller/use_rate_mode" value="True"/>
+      <param name="velocity_estimate_in_world_frame" value="false"/>
+      <param name="state_estimate_timeout" value="0.1"/>
+      <param name="control_command_delay" value="0.05"/>
+      <param name="enable_command_feedthrough" value="true"/>
+      <remap from="autopilot/state_estimate" to="ground_truth/odometry"/>
+    </node>
+
+    <node pkg="viri_sim" type="flightmare_renderer_node" name="flightmare_renderer" output="screen">
+      <rosparam file="$(find viri_sim)/config/renderer.yaml"/>
+      <rosparam file="$(find viri_sim)/config/cameras.yaml"/>
+    </node>
+
+    <node pkg="viri_sim" type="odom_noise_injector_node" name="odom_noise_injector" output="screen">
+      <rosparam file="$(find viri_sim)/config/noise.yaml"/>
+    </node>
+
+    <group if="$(arg rqt)">
+      <node pkg="joy" type="joy_node" name="joy_node">
+        <param name="autorepeat_rate" value="10"/>
+      </node>
+      <node pkg="manual_flight_assistant" type="manual_flight_assistant" name="manual_flight_assistant" output="screen">
+        <rosparam file="$(find rpg_rotors_interface)/parameters/manual_flight_assistant.yaml"/>
+        <param name="vmax_xy" value="3.0"/>
+        <param name="vmax_z" value="1.0"/>
+        <param name="rmax_yaw" value="2.0"/>
+      </node>
+      <node name="rqt_quad_gui" pkg="rqt_gui" type="rqt_gui" output="screen"
+            args="-s rqt_quad_gui.basic_flight.BasicFlight --args --quad_name $(arg chaser_name)"/>
+    </group>
+  </group>
+
+  <!-- Stereo rig TFs, generated from the same config as the renderer -->
+  <node pkg="viri_sim" type="camera_tf_publisher.py" name="camera_tf_publisher" output="screen">
+    <rosparam file="$(find viri_sim)/config/cameras.yaml"/>
+  </node>
+</launch>

@@ -1,0 +1,36 @@
+# Guidance node (paper Sec. III-G). All values default to the paper.
+law: hybrid                    # hybrid | pronav
+rate: 50.0                     # [Hz]
+
+# Pure ProNav (eq. 25-29)
+navigation_gain: 4.0           # N
+speed_gain: 1.5                # Kp
+desired_closing_speed: 1.5     # Vd [m/s]
+gravity: 9.81
+min_range: 0.05                # below this the LOS is undefined -> hover [m]
+
+# Hybrid heading mode (eq. 30-31)
+heading_threshold_deg: 15.0
+hysteresis_deg: 0.0            # 0 = single threshold as in the paper
+yaw_gain: 4.0                  # K_psi [1/s]
+max_yaw_rate: 3.14159265       # [rad/s]
+
+# Actuator limits
+max_tilt_deg: 40.0
+thrust_min: 9.0                # mass-normalized [m/s^2]
+thrust_max: 14.0
+
+# Command interface (published to autopilot/control_command_input, feedthrough)
+command_mode: body_rates       # body_rates | attitude
+k_roll_pitch: 12.0             # attitude P gains used in body_rates mode
+k_yaw: 5.0
+
+# Engagement sequencing
+auto_takeoff: true             # arm + autopilot/start once odometry is available
+takeoff_delay: 1.0             # [s] after first odometry
+auto_engage: true              # engage once the autopilot hovers and the LTVKF is initialized
+max_measurement_age: 1.0       # [s] without a stereo update -> stop commanding (autopilot hovers)
+
+relative_state_topic: relative_state
+odometry_topic: noisy_odometry
+intercepted_topic: /engagement/intercepted

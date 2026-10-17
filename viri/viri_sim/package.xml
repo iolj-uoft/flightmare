@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>viri_sim</name>
+  <version>0.1.0</version>
+  <description>Simulation for the viri interceptor: Flightmare stereo renderer, odometry noise, target trajectories and YOLO data generation.</description>
+  <maintainer email="yangchen.lin@mail.utoronto.ca">Yang-Chen Lin</maintainer>
+  <license>GNU GPL</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>roscpp</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+  <depend>flightlib</depend>
+  <build_depend>eigen</build_depend>
+
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>flightrender</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>rotors_gazebo</exec_depend>
+  <exec_depend>rotors_description</exec_depend>
+  <exec_depend>rpg_rotors_interface</exec_depend>
+  <exec_depend>autopilot</exec_depend>
+  <exec_depend>state_predictor</exec_depend>
+</package>

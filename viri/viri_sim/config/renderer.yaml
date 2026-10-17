@@ -1,0 +1,12 @@
+# Flightmare stereo renderer (paper Sec. III-B.1)
+unity_render: true
+scene_id: 1                    # flightlib UnityScene: 0 INDUSTRIAL, 1 WAREHOUSE, 2 GARAGE, 3 NATUREFOREST
+main_loop_freq: 50.0           # render rate [Hz]
+unity_startup_delay: 5.0       # [s] wait for Gazebo/Unity before connecting
+render_z_offset: 50.0          # [m] lift both drones in the Unity scene
+render_yaw_offset_deg: -135.0  # -90 (ROS/Unity forward axis) - 45 (RotorS "+" vs Flightmare "x")
+quad_size: 0.5
+chaser_odometry_topic: /chaser_drone/ground_truth/odometry
+target_odometry_topic: /target_drone/ground_truth/odometry
+left_image_topic: camera_left
+right_image_topic: camera_right

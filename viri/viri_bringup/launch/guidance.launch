@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!-- ProNav / Hybrid ProNav guidance (paper Sec. III-G). -->
+<launch>
+  <arg name="chaser_name" default="chaser_drone"/>
+  <arg name="law" default="hybrid"/>          <!-- hybrid | pronav -->
+  <arg name="auto_engage" default="true"/>
+
+  <group ns="$(arg chaser_name)">
+    <node pkg="viri_guidance" type="guidance_node" name="guidance" output="screen">
+      <rosparam file="$(find viri_guidance)/config/guidance.yaml"/>
+      <param name="law" value="$(arg law)"/>
+      <param name="auto_engage" value="$(arg auto_engage)"/>
+    </node>
+  </group>
+</launch>

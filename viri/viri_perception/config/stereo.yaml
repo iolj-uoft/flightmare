@@ -1,0 +1,17 @@
+# Stereo triangulation (paper Sec. III-D). 640x360 images, 60 deg horizontal FOV:
+# f = 320 / tan(30 deg) = 554.26 px would be the textbook value, but Flightmare's FOV is
+# vertical, giving f = 180 / tan(30 deg) = 311.77 px (paper value).
+focal_length: 311.77     # [px]
+baseline: 0.2            # [m]
+c_x: 320.0               # [px]
+c_y: 180.0               # [px]
+image_width: 640.0       # [px]
+
+# Outlier rejection
+edge_margin: 60.0        # [px] on x_L
+max_y_jitter: 15.0       # [px]
+min_disparity: 0.5       # [px]
+
+bbox_topic: /ultralytics/detection/target_centers
+target_position_topic: /target_position_relative
+camera_frame: chaser_drone/camera_left_optical

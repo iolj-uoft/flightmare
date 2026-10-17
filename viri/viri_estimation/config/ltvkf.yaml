@@ -1,0 +1,23 @@
+# Relative LTVKF (paper Sec. III-F). All values default to the paper.
+odometry_topic: noisy_odometry
+measurement_topic: /target_position_relative
+body_frame: chaser_drone/base_link
+ga_frame: ga_body_frame
+tf_timeout: 0.1                # [s] wait for camera->body TF at the image stamp
+
+# Initial covariance P0 = diag(p0_pos I3, p0_vel I3)
+p0_pos: 5.0
+p0_vel: 100.0
+# Process noise Q = diag(q_pos I3, q_vel I3)  (eq. 15)
+q_pos: 0.05
+q_vel: 10.0
+
+# Range-adaptive stereo noise, body frame (eq. 17-19)
+depth_noise_coeff: 0.001       # sigma_depth = c * d^2
+lateral_noise_coeff: 0.0005    # sigma_lat   = c * d
+noise_floor: 0.01              # + noise_floor * I3
+min_range: 0.5                 # [m]
+
+# Rewind-update-replay buffer
+history_size: 100              # prediction steps (~1 s at 100 Hz)
+max_dt: 0.1                    # odometry gaps above this are skipped [s]

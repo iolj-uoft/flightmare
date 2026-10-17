@@ -1,0 +1,18 @@
+# Stereo camera rig: single source of truth for the Flightmare renderer and the TF tree.
+# Positions are in the Gazebo/REP-103 chaser body frame (x forward, y left, z up).
+# They correspond to the paper's Flightmare-frame offsets b_L = [-0.141, 0, 0.3],
+# b_R = [0, 0.141, 0.3] rotated by the -135 deg render offset (20 cm baseline along body y).
+cameras:
+  width: 640
+  height: 360
+  fov_deg: 60.0
+  tilt_deg: 15.0               # upward tilt, compensates nose-down pitch in forward flight (eq. 1)
+  body_frame: chaser_drone/base_link
+  left:
+    position: [0.1, 0.1, 0.3]
+    frame: chaser_drone/camera_left
+    optical_frame: chaser_drone/camera_left_optical
+  right:
+    position: [0.1, -0.1, 0.3]
+    frame: chaser_drone/camera_right
+    optical_frame: chaser_drone/camera_right_optical

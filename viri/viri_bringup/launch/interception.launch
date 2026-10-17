@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<!-- Full vision-based interception pipeline:
+       Gazebo/Flightmare -> YOLO stereo -> triangulation -> LTVKF -> ProNav guidance -> RPG autopilot
+
+     roslaunch viri_bringup interception.launch law:=hybrid trajectory:=figure_eight -->
+<launch>
+  <arg name="law" default="hybrid"/>                <!-- hybrid | pronav -->
+  <arg name="trajectory" default="hover"/>          <!-- hover | back_and_forth | figure_eight -->
+  <arg name="auto_engage" default="true"/>
+  <arg name="target_x" default="4.0"/>
+  <arg name="target_y" default="0.0"/>
+  <arg name="model_path" default="$(find viri_perception)/models/best.pt"/>
+
+  <arg name="gui" default="true"/>
+  <arg name="rviz" default="true"/>
+  <arg name="rqt" default="false"/>
+  <arg name="log_dir" default="$(env HOME)/.ros/viri"/>  <!-- engagement CSV logs; "" disables -->
+
+  <include file="$(find viri_sim)/launch/sim.launch">
+    <arg name="trajectory" value="$(arg trajectory)"/>
+    <arg name="target_x" value="$(arg target_x)"/>
+    <arg name="target_y" value="$(arg target_y)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="rqt" value="$(arg rqt)"/>
+  </include>
+
+  <include file="$(find viri_bringup)/launch/perception.launch">
+    <arg name="model_path" value="$(arg model_path)"/>
+  </include>
+
+  <include file="$(find viri_bringup)/launch/estimation.launch"/>
+
+  <include file="$(find viri_bringup)/launch/guidance.launch">
+    <arg name="law" value="$(arg law)"/>
+    <arg name="auto_engage" value="$(arg auto_engage)"/>
+  </include>
+
+  <node pkg="viri_bringup" type="engagement_monitor.py" name="engagement_monitor" output="screen">
+    <rosparam file="$(find viri_bringup)/config/engagement.yaml"/>
+    <param name="log_dir" value="$(arg log_dir)"/>
+    <param name="run_label" value="$(arg law)_$(arg trajectory)"/>
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz" args="-d $(find viri_bringup)/rviz/interceptor.rviz"/>
+</launch>

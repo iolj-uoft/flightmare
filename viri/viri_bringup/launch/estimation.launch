@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- Gravity-aligned relative LTVKF (paper Sec. III-E, III-F). -->
+<launch>
+  <arg name="chaser_name" default="chaser_drone"/>
+
+  <group ns="$(arg chaser_name)">
+    <node pkg="viri_estimation" type="relative_ltvkf_node" name="relative_ltvkf" output="screen">
+      <rosparam file="$(find viri_estimation)/config/ltvkf.yaml"/>
+      <param name="body_frame" value="$(arg chaser_name)/base_link"/>
+    </node>
+  </group>
+</launch>

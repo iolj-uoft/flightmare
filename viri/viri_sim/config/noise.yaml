@@ -1,0 +1,7 @@
+# Odometry noise injection (paper Sec. III-B.2)
+input_topic: /chaser_drone/ground_truth/odometry
+output_topic: noisy_odometry
+vel_noise_std: 0.15            # sigma_v per velocity component [m/s]
+ang_vel_noise_scale: 0.5       # angular-rate sigma = scale * sigma_v [rad/s]
+pos_drift_std: 0.005           # random-walk position bias per step [m]
+seed: -1                       # < 0: random seed

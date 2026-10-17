@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>viri_msgs</name>
+  <version>0.1.0</version>
+  <description>Message definitions for the viri interceptor pipeline.</description>
+  <maintainer email="yangchen.lin@mail.utoronto.ca">Yang-Chen Lin</maintainer>
+  <license>GNU GPL</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+</package>

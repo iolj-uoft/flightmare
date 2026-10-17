@@ -1,0 +1,10 @@
+# YOLO26n stereo detector (paper Sec. III-C). Accepts .pt or .onnx weights.
+image_left_topic: /chaser_drone/camera_left
+image_right_topic: /chaser_drone/camera_right
+bbox_topic: /ultralytics/detection/target_centers
+out_image_left_topic: /ultralytics/detection/image_left_annotated
+out_image_right_topic: /ultralytics/detection/image_right_annotated
+imgsz: 640
+sync_queue_size: 5
+sync_slop: 0.03          # [s] ApproximateTimeSynchronizer window
+publish_annotated: true

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- YOLO26n stereo detection + stereo triangulation (paper Sec. III-C, III-D). -->
+<launch>
+  <arg name="model_path" default="$(find viri_perception)/models/best.pt"/>  <!-- .pt or .onnx -->
+
+  <node pkg="viri_perception" type="yolo_stereo_node.py" name="yolo_stereo_node" output="screen">
+    <rosparam file="$(find viri_perception)/config/yolo.yaml"/>
+    <param name="model_path" value="$(arg model_path)"/>
+  </node>
+
+  <node pkg="viri_perception" type="depth_estimation_node" name="depth_estimation" output="screen">
+    <rosparam file="$(find viri_perception)/config/stereo.yaml"/>
+  </node>
+</launch>

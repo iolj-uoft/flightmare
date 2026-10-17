@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>viri_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch files, engagement monitoring and result plotting for the viri interceptor.</description>
+  <maintainer email="yangchen.lin@mail.utoronto.ca">Yang-Chen Lin</maintainer>
+  <license>GNU GPL</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <exec_depend>viri_msgs</exec_depend>
+  <exec_depend>viri_perception</exec_depend>
+  <exec_depend>viri_estimation</exec_depend>
+  <exec_depend>viri_guidance</exec_depend>
+  <exec_depend>viri_sim</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>rviz</exec_depend>
+  <exec_depend>python3-matplotlib</exec_depend>
+</package>
